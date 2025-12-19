@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../models/production_type.dart';
-import '../models/material.dart';
+import '../models/material.dart' as material_model;
 
 class ProductionFormScreen extends StatefulWidget {
   const ProductionFormScreen({super.key});
@@ -19,7 +19,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
   DateTime _productionDate = DateTime.now();
 
   List<ProductionType> _productionTypes = [];
-  List<Material> _materials = [];
+  List<material_model.Material> _materials = [];
   List<Map<String, dynamic>> _selectedMaterials = [];
   bool _isLoading = true;
 
@@ -30,18 +30,21 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
   }
 
   Future<void> _loadData() async {
+    setState(() => _isLoading = true);
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
       final types = await apiService.getProductionTypes();
       final materials = await apiService.getMaterials();
-      setState(() {
-        _productionTypes = types;
-        _materials = materials;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
       if (mounted) {
+        setState(() {
+          _productionTypes = types;
+          _materials = materials;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Chyba pri načítaní dát: $e')),
         );
@@ -231,7 +234,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                       final index = entry.key;
                       final material = entry.value;
                       final materialName = _materials
-                          .firstWhere((m) => m.id == material['materialId'])
+                          .firstWhere((m) => m.id == material['materialId'] as String)
                           .name;
                       return Card(
                         child: ListTile(
@@ -267,7 +270,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
 }
 
 class _MaterialDialog extends StatefulWidget {
-  final List<Material> materials;
+  final List<material_model.Material> materials;
   final Function(String materialId, double quantity) onAdd;
 
   const _MaterialDialog({
@@ -280,7 +283,7 @@ class _MaterialDialog extends StatefulWidget {
 }
 
 class _MaterialDialogState extends State<_MaterialDialog> {
-  Material? _selectedMaterial;
+  material_model.Material? _selectedMaterial;
   final _quantityController = TextEditingController();
 
   @override
@@ -290,14 +293,14 @@ class _MaterialDialogState extends State<_MaterialDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          DropdownButtonFormField<Material>(
+          DropdownButtonFormField<material_model.Material>(
             value: _selectedMaterial,
             decoration: const InputDecoration(
               labelText: 'Materiál',
               border: OutlineInputBorder(),
             ),
             items: widget.materials.map((material) {
-              return DropdownMenuItem(
+              return DropdownMenuItem<material_model.Material>(
                 value: material,
                 child: Text('${material.name} (${material.unit})'),
               );
@@ -345,4 +348,3 @@ class _MaterialDialogState extends State<_MaterialDialog> {
     super.dispose();
   }
 }
-

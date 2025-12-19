@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
-import '../models/material.dart';
+import '../models/material.dart' as material_model;
 
 class WarehouseFormScreen extends StatefulWidget {
   const WarehouseFormScreen({super.key});
@@ -12,9 +12,9 @@ class WarehouseFormScreen extends StatefulWidget {
 
 class _WarehouseFormScreenState extends State<WarehouseFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  Material? _selectedMaterial;
+  material_model.Material? _selectedMaterial;
   final _quantityController = TextEditingController();
-  List<Material> _materials = [];
+  List<material_model.Material> _materials = [];
   bool _isLoading = true;
 
   @override
@@ -82,14 +82,14 @@ class _WarehouseFormScreenState extends State<WarehouseFormScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
-                  DropdownButtonFormField<Material>(
+                  DropdownButtonFormField<material_model.Material>(
                     value: _selectedMaterial,
                     decoration: const InputDecoration(
                       labelText: 'Materiál',
                       border: OutlineInputBorder(),
                     ),
                     items: _materials.map((material) {
-                      return DropdownMenuItem(
+                      return DropdownMenuItem<material_model.Material>(
                         value: material,
                         child: Text('${material.name} (${material.unit})'),
                       );
@@ -144,4 +144,3 @@ class _WarehouseFormScreenState extends State<WarehouseFormScreen> {
     super.dispose();
   }
 }
-
