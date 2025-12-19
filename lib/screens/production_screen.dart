@@ -643,26 +643,206 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            ..._products.map((product) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      product.name,
-                      style: const TextStyle(fontSize: 16),
-                    ),
+            // Zoskupenie produktov pod šaržami
+            if (_batches.isNotEmpty)
+              ..._groupProductsByBatch().entries.map((entry) {
+                final batchNumber = entry.key;
+                final products = entry.value;
+                final batch = _batches.firstWhere(
+                  (b) => b.batchNumber == batchNumber,
+                  orElse: () => Batch(
+                    id: '',
+                    productionId: '',
+                    batchNumber: batchNumber,
+                    quantity: 0,
                   ),
-                  Text(
-                    '${product.quantity} ks',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                );
+                
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                ],
-              ),
-            )),
+                  child: ExpansionTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.qr_code,
+                        color: Colors.blue.shade700,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      batchNumber,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${products.length} ${products.length == 1 ? 'produkt' : 'produktov'}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (batch.qrCode != null)
+                          IconButton(
+                            icon: Icon(Icons.qr_code_scanner, size: 20),
+                            onPressed: () {
+                              final batchObj = _batches.firstWhere(
+                                (b) => b.batchNumber == batchNumber,
+                                orElse: () => Batch(
+                                  id: '',
+                                  productionId: '',
+                                  batchNumber: batchNumber,
+                                  quantity: 0,
+                                ),
+                              );
+                              if (batchObj.id.isNotEmpty && batchObj.qrCode != null) {
+                                // Zobrazíme QR kód šarže
+                                final qrData = batchObj.qrCode!;
+                                final qrString = qrData.startsWith('data:image') 
+                                    ? batchNumber // Pre obrázok použijeme batch number
+                                    : qrData; // Pre text použijeme priamo qrData
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    title: Row(
+                                      children: [
+                                        Icon(Icons.qr_code, color: Colors.blue),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'QR kód - $batchNumber',
+                                            style: const TextStyle(fontSize: 16),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (qrData.startsWith('data:image'))
+                                          Image.network(
+                                            qrData,
+                                            width: 200,
+                                            height: 200,
+                                          )
+                                        else
+                                          Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: QrImageView(
+                                              data: qrString,
+                                              size: 200,
+                                              backgroundColor: Colors.white,
+                                            ),
+                                          ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'Šarža: $batchNumber',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Zavrieť'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                            },
+                            tooltip: 'Zobraziť QR kód',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        Icon(
+                          Icons.arrow_drop_down,
+                          color: Colors.grey.shade600,
+                        ),
+                      ],
+                    ),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Column(
+                          children: products.map((product) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade400,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    product.name,
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ),
+                                Text(
+                                  '${product.quantity} ks',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              })
+            else if (_products.isNotEmpty)
+              ..._products.map((product) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        product.name,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+                    Text(
+                      '${product.quantity} ks',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              )),
           ],
         ),
       ),
@@ -696,6 +876,44 @@ class _ProductionScreenState extends State<ProductionScreen> {
         ],
       ),
     );
+  }
+
+  // Zoskupenie produktov pod šaržami
+  Map<String, List<Product>> _groupProductsByBatch() {
+    final grouped = <String, List<Product>>{};
+    
+    // Prejdeme cez všetky výroby a ich batch-e
+    for (var production in _productions) {
+      // Nájdeme batch-e pre túto výrobu
+      final productionBatches = _batches.where((b) => b.productionId == production.id).toList();
+      
+      if (productionBatches.isEmpty) {
+        // Ak výroba nemá batch, vytvoríme fiktívny
+        final productName = production.productionTypeName ?? 'Neznámy';
+        final batchKey = 'VÝROBA-${production.id.substring(0, 8).toUpperCase()}';
+        grouped.putIfAbsent(batchKey, () => []).add(
+          Product(
+            id: production.hashCode,
+            name: productName,
+            quantity: production.quantity.toInt(),
+          ),
+        );
+      } else {
+        // Pre každý batch pridáme produkt
+        for (var batch in productionBatches) {
+          final productName = production.productionTypeName ?? 'Neznámy';
+          grouped.putIfAbsent(batch.batchNumber, () => []).add(
+            Product(
+              id: production.hashCode,
+              name: productName,
+              quantity: production.quantity.toInt(),
+            ),
+          );
+        }
+      }
+    }
+    
+    return grouped;
   }
 
   Widget _buildProductionByDaysSection() {
