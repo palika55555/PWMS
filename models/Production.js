@@ -105,9 +105,28 @@ export class Production {
     const db = getLocalDb();
     const id = uuidv4();
     
-    // Generate QR code
+    // Generate QR code for production
     const qrData = JSON.stringify({ id, productionTypeId, quantity, date: productionDate || new Date().toISOString() });
     const qrCode = await QRCode.toDataURL(qrData);
+    
+    // Generate batch number (format: BATCH-YYYYMMDD-XXX)
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+    const batchCount = db.prepare(`
+      SELECT COUNT(*) as count FROM batches 
+      WHERE batch_number LIKE ?
+    `).get(`BATCH-${dateStr}-%`);
+    const batchNum = (batchCount?.count || 0) + 1;
+    const batchNumber = `BATCH-${dateStr}-${String(batchNum).length === 1 ? '00' : String(batchNum).length === 2 ? '0' : ''}${batchNum}`;
+    
+    // Generate QR code for batch
+    const batchQrData = JSON.stringify({ 
+      batchNumber, 
+      productionId: id, 
+      quantity, 
+      date: productionDate || new Date().toISOString() 
+    });
+    const batchQrCode = await QRCode.toDataURL(batchQrData);
     
     db.transaction(() => {
       // Create production record
@@ -115,6 +134,13 @@ export class Production {
         INSERT INTO production (id, production_type_id, quantity, notes, qr_code, production_date, synced)
         VALUES (?, ?, ?, ?, ?, ?, 0)
       `).run(id, productionTypeId, quantity, notes || null, qrCode, productionDate || new Date().toISOString());
+      
+      // Create batch automatically
+      const batchId = uuidv4();
+      db.prepare(`
+        INSERT INTO batches (id, production_id, batch_number, quantity, qr_code, status, created_at, synced)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, 0)
+      `).run(batchId, id, batchNumber, quantity, batchQrCode, new Date().toISOString());
       
       // Add materials used
       if (materials && materials.length > 0) {
@@ -136,12 +162,20 @@ export class Production {
         }
       }
       
-      // Add to sync queue
+      // Add to sync queue for production
       db.prepare(`
         INSERT INTO sync_queue (table_name, record_id, operation, data)
         VALUES (?, ?, ?, ?)
       `).run('production', id, 'INSERT', JSON.stringify({
         id, productionTypeId, quantity, materials, notes, productionDate, qrCode
+      }));
+      
+      // Add to sync queue for batch
+      db.prepare(`
+        INSERT INTO sync_queue (table_name, record_id, operation, data)
+        VALUES (?, ?, ?, ?)
+      `).run('batches', batchId, 'INSERT', JSON.stringify({
+        id: batchId, production_id: id, batch_number: batchNumber, quantity, qr_code: batchQrCode, status: 'pending'
       }));
     })();
     

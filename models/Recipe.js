@@ -34,11 +34,19 @@ export class Recipe {
 
   static getByProductionTypeId(productionTypeId) {
     const db = getLocalDb();
-    return db.prepare(`
-      SELECT * FROM recipes 
-      WHERE production_type_id = ?
-      ORDER BY name
+    const recipes = db.prepare(`
+      SELECT r.*, pt.name as production_type_name
+      FROM recipes r
+      LEFT JOIN production_types pt ON r.production_type_id = pt.id
+      WHERE r.production_type_id = ?
+      ORDER BY r.name
     `).all(productionTypeId);
+    
+    // Pridáme materiály ku každému receptu
+    return recipes.map(recipe => {
+      recipe.materials = this.getMaterials(recipe.id);
+      return recipe;
+    });
   }
 
   static getMaterials(recipeId) {

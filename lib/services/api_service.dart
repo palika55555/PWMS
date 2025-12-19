@@ -359,6 +359,90 @@ class ApiService extends ChangeNotifier {
     }
   }
 
+  // Get batches grouped by days
+  Future<Map<String, List<Batch>>> getBatchesByDays({int days = 30}) async {
+    try {
+      final batches = await getBatches();
+      final now = DateTime.now();
+      final cutoffDate = now.subtract(Duration(days: days));
+      
+      final Map<String, List<Batch>> grouped = {};
+      
+      for (final batch in batches) {
+        if (batch.createdAt != null && batch.createdAt!.isAfter(cutoffDate)) {
+          final dayKey = '${batch.createdAt!.year}-${batch.createdAt!.month.toString().padLeft(2, '0')}-${batch.createdAt!.day.toString().padLeft(2, '0')}';
+          grouped.putIfAbsent(dayKey, () => []).add(batch);
+        }
+      }
+      
+      return grouped;
+    } catch (e) {
+      debugPrint('Error loading batches by days: $e');
+      rethrow;
+    }
+  }
+
+  // Check low stock materials
+  Future<List<Map<String, dynamic>>> checkLowStock({double threshold = 100}) async {
+    try {
+      final warehouse = await getWarehouse();
+      final materials = await getMaterials();
+      final alerts = <Map<String, dynamic>>[];
+      
+      for (final item in warehouse) {
+        final material = materials.firstWhere(
+          (m) => m.id == item.materialId,
+          orElse: () => Material(id: item.materialId, name: 'Neznámy', unit: ''),
+        );
+        
+        if (item.quantity == 0) {
+          alerts.add({
+            'type': 'critical_stock',
+            'material': material,
+            'message': 'Kritický nedostatok - zásoby sú na nule!',
+            'quantity': item.quantity,
+          });
+        } else if (item.quantity < threshold) {
+          alerts.add({
+            'type': 'low_stock',
+            'material': material,
+            'message': 'Nízke zásoby - ${item.quantity.toStringAsFixed(2)} ${material.unit}',
+            'quantity': item.quantity,
+          });
+        }
+      }
+      
+      return alerts;
+    } catch (e) {
+      debugPrint('Error checking low stock: $e');
+      return [];
+    }
+  }
+
+  // Add material quantity to warehouse
+  Future<Warehouse> addMaterialQuantity(String materialId, double quantity) async {
+    try {
+      final warehouse = await getWarehouse();
+      final existing = warehouse.firstWhere(
+        (w) => w.materialId == materialId,
+        orElse: () => Warehouse(
+          id: '',
+          materialId: materialId,
+          quantity: 0,
+        ),
+      );
+      
+      if (existing.id.isEmpty) {
+        return await createWarehouseEntry(materialId, quantity);
+      } else {
+        return await updateWarehouseQuantity(existing.id, existing.quantity + quantity);
+      }
+    } catch (e) {
+      debugPrint('Error adding material quantity: $e');
+      rethrow;
+    }
+  }
+
   Future<dynamic> createBatch({
     required String productionId,
     required String batchNumber,
@@ -402,6 +486,28 @@ class ApiService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error loading quality tests: $e');
       rethrow;
+    }
+  }
+
+  // Update batch quality status
+  Future<bool> updateBatchQualityStatus(
+    String batchId,
+    String status, {
+    String? notes,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/batches/$batchId/quality'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'status': status,
+          'notes': notes,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating batch quality status: $e');
+      return false;
     }
   }
 
