@@ -11,6 +11,7 @@ import '../models/material.dart' as material_model;
 import '../models/batch.dart';
 import '../services/api_service.dart';
 import 'production_form_screen.dart';
+import 'batch_detail_screen.dart';
 
 // Helper classes to match the provided code structure
 class Product {
@@ -62,7 +63,7 @@ class ProductionScreen extends StatefulWidget {
   State<ProductionScreen> createState() => _ProductionScreenState();
 }
 
-class _ProductionScreenState extends State<ProductionScreen> {
+class _ProductionScreenState extends State<ProductionScreen> with SingleTickerProviderStateMixin {
   List<Production> _productions = [];
   List<ProductionType> _productionTypes = [];
   List<Warehouse> _warehouse = [];
@@ -79,11 +80,22 @@ class _ProductionScreenState extends State<ProductionScreen> {
   
   bool _isLoading = true;
   bool _showByDays = true; // Zobrazenie podľa dní
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      setState(() {}); // Aktualizovať UI pri zmene záložky
+    });
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -243,16 +255,25 @@ class _ProductionScreenState extends State<ProductionScreen> {
           onPressed: () => Navigator.pop(context),
           tooltip: 'Späť',
         ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.precision_manufacturing), text: 'Výroba'),
+            Tab(icon: Icon(Icons.inventory_2), text: 'Šarže'),
+          ],
+        ),
         actions: [
-          IconButton(
-            icon: Icon(_showByDays ? Icons.view_list : Icons.calendar_view_day),
-            onPressed: () {
-              setState(() {
-                _showByDays = !_showByDays;
-              });
-            },
-            tooltip: _showByDays ? 'Zobraziť zoznam' : 'Zobraziť podľa dní',
-          ),
+          if (_tabController.index == 0) ...[
+            IconButton(
+              icon: Icon(_showByDays ? Icons.view_list : Icons.calendar_view_day),
+              onPressed: () {
+                setState(() {
+                  _showByDays = !_showByDays;
+                });
+              },
+              tooltip: _showByDays ? 'Zobraziť zoznam' : 'Zobraziť podľa dní',
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
@@ -267,43 +288,53 @@ class _ProductionScreenState extends State<ProductionScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_alertsFormatted.isNotEmpty) ...[
-                      _buildAlertsSection(),
-                      const SizedBox(height: 16),
-                    ],
-                    _buildMaterialsSection(),
-                    const SizedBox(height: 24),
-                    _buildProductionOverview(),
-                    const SizedBox(height: 24),
-                    _showByDays 
-                        ? _buildProductionByDaysSection()
-                        : _buildRecentProductionSection(),
-                  ],
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                // Záložka Výroba
+                RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_alertsFormatted.isNotEmpty) ...[
+                          _buildAlertsSection(),
+                          const SizedBox(height: 16),
+                        ],
+                        _buildMaterialsSection(),
+                        const SizedBox(height: 24),
+                        _buildProductionOverview(),
+                        const SizedBox(height: 24),
+                        _showByDays 
+                            ? _buildProductionByDaysSection()
+                            : _buildRecentProductionSection(),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+                // Záložka Šarže
+                _buildBatchesTab(),
+              ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const ProductionFormScreen(),
-            ),
-          );
-          _loadData();
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Nová výroba'),
-        backgroundColor: Colors.green,
-      ),
+      floatingActionButton: _tabController.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ProductionFormScreen(),
+                  ),
+                );
+                _loadData();
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Nová výroba'),
+              backgroundColor: Colors.green,
+            )
+          : null,
     );
   }
 
@@ -1687,6 +1718,312 @@ class _ProductionScreenState extends State<ProductionScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBatchesTab() {
+    if (_batches.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Žiadne šarže',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Šarže sa zobrazia po vytvorení výroby',
+              style: TextStyle(color: Colors.grey[500]),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Zoskupenie šarží podľa statusu
+    final batchesByStatus = <String, List<Batch>>{
+      'pending': [],
+      'in_progress': [],
+      'completed': [],
+      'shipped': [],
+    };
+
+    for (var batch in _batches) {
+      final status = batch.status;
+      if (batchesByStatus.containsKey(status)) {
+        batchesByStatus[status]!.add(batch);
+      } else {
+        batchesByStatus['pending']!.add(batch);
+      }
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Prehľad šarží
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildBatchStatCard(
+                        'Čakajúce',
+                        batchesByStatus['pending']!.length.toString(),
+                        Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildBatchStatCard(
+                        'Prebiehajúce',
+                        batchesByStatus['in_progress']!.length.toString(),
+                        Colors.blue,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildBatchStatCard(
+                        'Dokončené',
+                        batchesByStatus['completed']!.length.toString(),
+                        Colors.green,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildBatchStatCard(
+                        'Expedované',
+                        batchesByStatus['shipped']!.length.toString(),
+                        Colors.purple,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Zoznam šarží podľa statusu
+            if (batchesByStatus['pending']!.isNotEmpty) ...[
+              _buildBatchStatusSection('Čakajúce šarže', batchesByStatus['pending']!, Colors.orange),
+              const SizedBox(height: 16),
+            ],
+            if (batchesByStatus['in_progress']!.isNotEmpty) ...[
+              _buildBatchStatusSection('Prebiehajúce šarže', batchesByStatus['in_progress']!, Colors.blue),
+              const SizedBox(height: 16),
+            ],
+            if (batchesByStatus['completed']!.isNotEmpty) ...[
+              _buildBatchStatusSection('Dokončené šarže', batchesByStatus['completed']!, Colors.green),
+              const SizedBox(height: 16),
+            ],
+            if (batchesByStatus['shipped']!.isNotEmpty) ...[
+              _buildBatchStatusSection('Expedované šarže', batchesByStatus['shipped']!, Colors.purple),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBatchStatCard(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBatchStatusSection(String title, List<Batch> batches, Color color) {
+    return Card(
+      elevation: 2,
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.inventory_2,
+            color: color,
+            size: 24,
+          ),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        subtitle: Text('${batches.length} ${batches.length == 1 ? 'šarža' : batches.length < 5 ? 'šarže' : 'šarží'}'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              children: batches.map((batch) => _buildBatchListItem(batch, color)).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBatchListItem(Batch batch, Color statusColor) {
+    final production = _productions.firstWhere(
+      (p) => p.id == batch.productionId,
+      orElse: () => Production(
+        id: batch.productionId,
+        productionTypeId: '',
+        quantity: batch.quantity,
+      ),
+    );
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: statusColor.withOpacity(0.3)),
+      ),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: statusColor,
+          child: batch.qrCode != null
+              ? const Icon(Icons.qr_code, color: Colors.white, size: 20)
+              : Text(
+                  batch.batchNumber.substring(0, 2).toUpperCase(),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+        ),
+        title: Text(
+          'Šarža: ${batch.batchNumber}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Produkt: ${production.productionTypeName ?? 'Neznámy'}'),
+            Text('Množstvo: ${batch.quantity.toStringAsFixed(2)}'),
+            if (batch.warehouseLocation != null)
+              Text('Sklad: ${batch.warehouseLocation}'),
+            if (batch.createdAt != null)
+              Text(
+                'Vytvorené: ${DateFormat('dd.MM.yyyy HH:mm').format(batch.createdAt!)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
+          ],
+        ),
+        trailing: batch.qrCode != null
+            ? IconButton(
+                icon: const Icon(Icons.qr_code_scanner),
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      title: Row(
+                        children: [
+                          Icon(Icons.qr_code, color: statusColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'QR kód - ${batch.batchNumber}',
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                          ),
+                        ],
+                      ),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: QrImageView(
+                              data: batch.qrCode!,
+                              size: 200,
+                              backgroundColor: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Šarža: ${batch.batchNumber}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Zavrieť'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              )
+            : null,
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => BatchDetailScreen(batch: batch),
+            ),
+          );
+          _loadData();
+        },
+        isThreeLine: true,
       ),
     );
   }

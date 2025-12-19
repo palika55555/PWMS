@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { getRemotePool } from '../config/database.js';
-import { createRemoteSchema } from '../models/database-schema.js';
+import { createRemoteSchema, checkRemoteSchemaExists } from '../models/database-schema.js';
 
 // Load .env file if it exists (for local development)
 // In CI/CD, DATABASE_URL should be provided via environment variables
@@ -15,13 +15,25 @@ if (!pool) {
   process.exit(1);
 }
 
-createRemoteSchema(pool)
+// Check if schema already exists
+checkRemoteSchemaExists(pool)
+  .then((schemaExists) => {
+    if (schemaExists) {
+      console.log('✓ Remote database schema already exists');
+      console.log('  Skipping schema creation to preserve existing data');
+      console.log('  If you need to recreate schema, set FORCE_MIGRATE=true');
+      return Promise.resolve();
+    } else {
+      console.log('Remote database schema not found, creating...');
+      return createRemoteSchema(pool);
+    }
+  })
   .then(() => {
-    console.log('Remote database schema created/updated successfully');
+    console.log('Remote database schema ready');
     process.exit(0);
   })
   .catch((error) => {
-    console.error('Error creating remote schema:', error);
+    console.error('Error with remote schema:', error);
     process.exit(1);
   });
 

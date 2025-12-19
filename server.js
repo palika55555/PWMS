@@ -33,24 +33,47 @@ console.log('Local database initialized');
 // Initialize remote database if available
 const remotePool = getRemotePool();
 if (remotePool) {
-  // Check if schema exists before creating (to avoid unnecessary operations)
-  checkRemoteSchemaExists(remotePool)
-    .then((schemaExists) => {
-      if (!schemaExists) {
-        console.log('Remote database schema not found, creating...');
-        return createRemoteSchema(remotePool);
-      } else {
-        console.log('Remote database schema already exists, skipping creation');
-        return Promise.resolve();
-      }
-    })
-    .then(() => {
-      console.log('Remote database ready');
-    })
-    .catch((error) => {
-      console.error('Error initializing remote database:', error.message);
-      console.log('Application will work in offline mode');
-    });
+  // Only create schema if explicitly enabled via environment variable
+  // This prevents accidental data loss on Railway redeployments
+  const autoMigrate = process.env.AUTO_MIGRATE === 'true' || process.env.FORCE_MIGRATE === 'true';
+  
+  if (autoMigrate) {
+    console.log('Auto-migration enabled, checking schema...');
+    // Check if schema exists before creating (to avoid unnecessary operations)
+    checkRemoteSchemaExists(remotePool)
+      .then((schemaExists) => {
+        if (!schemaExists) {
+          console.log('Remote database schema not found, creating...');
+          return createRemoteSchema(remotePool);
+        } else {
+          console.log('Remote database schema already exists, skipping creation');
+          return Promise.resolve();
+        }
+      })
+      .then(() => {
+        console.log('Remote database ready');
+      })
+      .catch((error) => {
+        console.error('Error initializing remote database:', error.message);
+        console.log('Application will work in offline mode');
+      });
+  } else {
+    // Just verify connection without creating schema
+    checkRemoteSchemaExists(remotePool)
+      .then((schemaExists) => {
+        if (schemaExists) {
+          console.log('✓ Remote database connected (schema exists)');
+        } else {
+          console.warn('⚠️  Remote database connected but schema not found');
+          console.warn('   Run "npm run migrate:remote" to create schema');
+          console.warn('   Or set AUTO_MIGRATE=true to enable auto-migration');
+        }
+      })
+      .catch((error) => {
+        console.error('Error checking remote database:', error.message);
+        console.log('Application will work in offline mode');
+      });
+  }
 }
 
 // Routes
