@@ -9,6 +9,7 @@ import '../services/production_service.dart';
 import '../services/alert_service.dart';
 import '../services/quality_service.dart';
 import '../services/quality_sync_service.dart';
+import '../services/shipment_sync_service.dart';
 import '../services/recipe_service.dart';
 import '../models/material.dart' as models;
 import '../models/product.dart';
@@ -26,6 +27,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
   final AlertService _alertService = AlertService();
   final RecipeService _recipeService = RecipeService();
   final QualitySyncService _qualitySyncService = QualitySyncService();
+  final ShipmentSyncService _shipmentSyncService = ShipmentSyncService();
   
   List<models.Material> _materials = [];
   List<Product> _products = [];
@@ -59,13 +61,15 @@ class _ProductionScreenState extends State<ProductionScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Synchronizujem kvalitu pre ${batchNumbers.length} šarží...'),
+            content: Text('Synchronizujem kvalitu a expedovanie pre ${batchNumbers.length} šarží...'),
             duration: const Duration(seconds: 2),
           ),
         );
       }
 
+      // Synchronizovať kvalitu aj expedovanie
       await _qualitySyncService.syncAllQualityFromAPI(batchNumbers);
+      await _shipmentSyncService.syncAllShipmentsFromAPI(batchNumbers);
       
       // Obnoviť dáta
       await _loadData();
@@ -73,7 +77,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Kvalita bola úspešne synchronizovaná'),
+            content: Text('Kvalita a expedovanie boli úspešne synchronizované'),
             backgroundColor: Colors.green,
           ),
         );

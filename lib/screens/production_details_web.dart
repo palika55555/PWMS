@@ -19,17 +19,19 @@ class ProductionDetailsWeb extends StatefulWidget {
 class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
   Map<String, String> _qualityStatuses = {}; // batchNumber -> status
   Map<String, String?> _qualityNotes = {}; // batchNumber -> notes
+  Map<String, bool> _shippedStatuses = {}; // batchNumber -> shipped
+  Map<String, String?> _shippedDates = {}; // batchNumber -> shippedDate
   bool _isLoading = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    // Načítať kvalitu asynchrónne po tom, ako sa widget úplne načíta
-    // Použiť Future.microtask namiesto addPostFrameCallback pre lepšiu kompatibilitu
+    // Načítať kvalitu a expedovanie asynchrónne po tom, ako sa widget úplne načíta
     Future.microtask(() {
       if (mounted) {
         _loadQualityStatuses();
+        _loadShipmentStatuses();
       }
     });
   }
@@ -294,6 +296,194 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
     }
   }
 
+  Future<void> _loadShipmentStatuses() async {
+    if (!kIsWeb || widget.productionData == null) return;
+    
+    await Future.delayed(const Duration(milliseconds: 100));
+    
+    if (!mounted) return;
+
+    try {
+      final batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
+      if (batchNumbers.isEmpty) return;
+
+      final baseUrl = html.window.location.origin;
+      
+      for (var batchNum in batchNumbers) {
+        if (batchNum == null || !mounted) continue;
+        
+        try {
+          final response = await http.get(
+            Uri.parse('$baseUrl/api/shipment?batchNumber=$batchNum'),
+          ).timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              throw Exception('Request timeout');
+            },
+          ).catchError((e) {
+            print('Network error loading shipment for $batchNum: $e');
+            return http.Response('{"success": false}', 500);
+          });
+
+          if (response.statusCode == 200 && mounted) {
+            try {
+              final data = jsonDecode(response.body);
+              if (data['success'] == true && data['shipment'] != null) {
+                if (mounted) {
+                  setState(() {
+                    _shippedStatuses[batchNum.toString()] = data['shipment']['shipped'] ?? false;
+                    _shippedDates[batchNum.toString()] = data['shipment']['shippedDate'];
+                  });
+                }
+              }
+            } catch (e) {
+              print('Error parsing shipment response for $batchNum: $e');
+            }
+          }
+        } catch (e) {
+          print('Error loading shipment for $batchNum: $e');
+        }
+      }
+    } catch (e) {
+      print('Non-critical error loading shipment statuses: $e');
+    }
+  }
+
+  Future<void> _updateShipmentStatus(String batchNumber, bool shipped, {String? notes}) async {
+    if (!kIsWeb || !mounted) return;
+
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final baseUrl = html.window.location.origin;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/shipment'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'batchNumber': batchNumber,
+          'shipped': shipped,
+          'shippedBy': 'Web User',
+          'notes': notes,
+        }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      ).catchError((e) {
+        print('Network error updating shipment: $e');
+        return http.Response('{"success": false}', 500);
+      });
+
+      if (response.statusCode == 200 && mounted) {
+        try {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true) {
+            if (mounted) {
+              setState(() {
+                _shippedStatuses[batchNumber] = shipped;
+                _shippedDates[batchNumber] = data['data']?['shippedDate'];
+              });
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(shipped 
+                      ? 'Šarža $batchNumber bola expedovaná' 
+                      : 'Expedovanie šarže $batchNumber bolo zrušené'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          }
+        } catch (e) {
+          print('Error parsing shipment response: $e');
+        }
+      } else {
+        throw Exception('Failed to update shipment: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Chyba pri aktualizácii expedovania: $e';
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chyba: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showShipmentDialog(String batchNumber, bool isShipped) {
+    final notesController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isShipped ? 'Zrušiť expedovanie' : 'Expedovať šaržu'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isShipped 
+                    ? 'Naozaj chcete zrušiť expedovanie šarže $batchNumber?'
+                    : 'Naozaj chcete expedovať šaržu $batchNumber?',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Poznámky (voliteľné)',
+                  hintText: 'Napríklad: Adresa doručenia, dopravca...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušiť'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _updateShipmentStatus(
+                batchNumber,
+                !isShipped,
+                notes: notesController.text.trim().isEmpty 
+                    ? null 
+                    : notesController.text.trim(),
+              );
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isShipped ? Colors.grey : Colors.teal,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(isShipped ? 'Zrušiť expedovanie' : 'Expedovať'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.productionData == null) {
@@ -547,10 +737,112 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
                 ),
               ),
             ],
+            // Sekcia pre expedovanie
+            const SizedBox(height: 16),
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.local_shipping, color: Colors.teal),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Expedovanie',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (batchNumbers.isEmpty)
+                      const Text('Žiadne šarže na expedovanie')
+                    else ...[
+                      ...batchNumbers.map((batchNum) {
+                        if (batchNum == null) return const SizedBox.shrink();
+                        final batchStr = batchNum.toString();
+                        final isShipped = _shippedStatuses[batchStr] ?? false;
+                        final shippedDate = _shippedDates[batchStr];
+                        
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      isShipped ? Icons.check_circle : Icons.radio_button_unchecked,
+                                      color: isShipped ? Colors.green : Colors.grey,
+                                      size: 24,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            batchStr,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              decoration: isShipped 
+                                                  ? TextDecoration.lineThrough 
+                                                  : TextDecoration.none,
+                                            ),
+                                          ),
+                                          if (isShipped && shippedDate != null)
+                                            Text(
+                                              'Expedované: ${_formatDate(shippedDate)}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: _isLoading 
+                                    ? null 
+                                    : () => _showShipmentDialog(batchStr, isShipped),
+                                icon: Icon(isShipped ? Icons.undo : Icons.local_shipping),
+                                label: Text(isShipped ? 'Zrušiť' : 'Expedovať'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isShipped ? Colors.grey : Colors.teal,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+  
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateStr;
+    }
   }
 
   Widget _buildInfoRow(String label, String value) {
