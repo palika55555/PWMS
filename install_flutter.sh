@@ -54,7 +54,11 @@ fi
 FLUTTER_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 
 echo "Downloading Flutter ${FLUTTER_VERSION} (this may take a minute)..."
-curl -L --progress-bar "$FLUTTER_URL" -o flutter.tar.xz
+if command -v wget &> /dev/null; then
+    wget --progress=bar:force "$FLUTTER_URL" -O flutter.tar.xz 2>&1
+else
+    curl -L --progress-bar "$FLUTTER_URL" -o flutter.tar.xz
+fi
 
 echo "Extracting Flutter..."
 tar xf flutter.tar.xz

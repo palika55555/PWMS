@@ -1,20 +1,7 @@
 // Vercel serverless function pre ukladanie a načítanie stavu expedovania
-// POZNÁMKA: Toto používa in-memory storage, ktorý sa stratí po redeploy
-// Pre produkciu odporúčame použiť Vercel KV, databázu alebo externý storage
+// Používa storage helper, ktorý podporuje Vercel KV alebo fallback na in-memory
 
-// In-memory storage
-let shipmentData = {};
-
-// Načítanie dát
-function loadData() {
-  return shipmentData;
-}
-
-// Uloženie dát
-function saveData(data) {
-  shipmentData = data;
-  return true;
-}
+const storage = require('./storage');
 
 module.exports = async function handler(req, res) {
   // CORS headers
@@ -37,12 +24,7 @@ module.exports = async function handler(req, res) {
         });
       }
 
-      const data = loadData();
-      if (!data.shipments) {
-        data.shipments = {};
-      }
-
-      data.shipments[batchNumber] = {
+      const shipmentData = {
         shipped: shipped !== undefined ? shipped : true,
         shippedDate: shippedDate || new Date().toISOString(),
         shippedBy: shippedBy || null,
@@ -50,7 +32,7 @@ module.exports = async function handler(req, res) {
         updatedAt: new Date().toISOString(),
       };
 
-      if (saveData(data)) {
+      if (await storage.setShipmentForBatch(batchNumber, shipmentData)) {
         // Registrovať zmenu v sync API
         try {
           const syncUrl = req.headers.host 
@@ -63,7 +45,7 @@ module.exports = async function handler(req, res) {
             body: JSON.stringify({
               type: 'shipment',
               batchNumber: batchNumber,
-              data: data.shipments[batchNumber],
+              data: shipmentData,
               source: 'web',
             }),
           }).catch(() => {
@@ -76,7 +58,7 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ 
           success: true, 
           message: 'Shipment status saved successfully',
-          data: data.shipments[batchNumber]
+          data: shipmentData
         });
       } else {
         return res.status(500).json({ error: 'Failed to save data' });
@@ -92,11 +74,9 @@ module.exports = async function handler(req, res) {
     try {
       const { batchNumber } = req.query;
 
-      const data = loadData();
-
       if (batchNumber) {
         // Konkrétna šarža
-        const shipment = data.shipments?.[batchNumber] || null;
+        const shipment = await storage.getShipmentForBatch(batchNumber);
         return res.status(200).json({ 
           success: true, 
           batchNumber,
@@ -104,9 +84,10 @@ module.exports = async function handler(req, res) {
         });
       } else {
         // Všetky šarže
+        const shipments = await storage.getShipments();
         return res.status(200).json({ 
           success: true, 
-          shipments: data.shipments || {} 
+          shipments: shipments || {} 
         });
       }
     } catch (error) {

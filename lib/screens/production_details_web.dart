@@ -571,7 +571,21 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
     final batches = widget.productionData!['batches'] as int? ?? 0;
     final totalQuantity = widget.productionData!['total_quantity'] as int? ?? 0;
     final products = widget.productionData!['products'] as Map<String, dynamic>? ?? {};
-    final batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
+    
+    // Získať batch_numbers - skúsiť z rôznych zdrojov
+    List batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
+    
+    // Ak batch_numbers nie je, skúsiť z batch_data
+    if (batchNumbers.isEmpty && widget.productionData!['batch_data'] != null) {
+      final batchData = widget.productionData!['batch_data'] as List?;
+      if (batchData != null && batchData.isNotEmpty) {
+        batchNumbers = batchData
+            .map((b) => b['batchNumber'] as String?)
+            .where((bn) => bn != null)
+            .toList();
+        print('Extracted batchNumbers from batch_data: $batchNumbers');
+      }
+    }
     
     print('Parsed data - date: $date, batches: $batches, totalQuantity: $totalQuantity, products: $products, batchNumbers: $batchNumbers');
 

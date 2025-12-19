@@ -28,24 +28,29 @@ fi
 echo "Flutter version:"
 flutter --version
 
-# Get dependencies (optimized)
+# Get dependencies (optimized - skip precompile)
 echo "Getting Flutter dependencies..."
 if [ -f "pubspec.lock" ]; then
     echo "pubspec.lock found, dependencies may be cached..."
 fi
 
-# Try to get dependencies with retry
-if ! flutter pub get --no-example; then
+# Try to get dependencies with retry (skip precompile for faster build)
+if ! flutter pub get --no-example --no-precompile; then
     echo "WARNING: flutter pub get failed, retrying..."
-    flutter pub get --no-example || {
+    flutter pub get --no-example --no-precompile || {
         echo "ERROR: Failed to get Flutter dependencies"
         exit 1
     }
 fi
 
-# Build for web (optimized)
+# Build for web (optimized - skip Skia for faster build)
 echo "Building Flutter web app for production..."
-flutter build web --release --base-href / --no-tree-shake-icons || \
+flutter build web \
+    --release \
+    --base-href / \
+    --no-tree-shake-icons \
+    --dart-define=FLUTTER_WEB_USE_SKIA=false \
+    --web-renderer canvaskit || \
 flutter build web --release --base-href /
 
 echo "Build completed! Output is in build/web/"

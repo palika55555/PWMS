@@ -1,22 +1,8 @@
 // Vercel serverless function pre real-time synchronizáciu
 // Vracia timestamp poslednej zmeny a zmeny od určitého timestampu
+// Používa storage helper, ktorý podporuje Vercel KV alebo fallback na in-memory
 
-// Zdieľaný storage (v produkcii by to bola databáza)
-let syncData = {
-  lastUpdate: new Date().toISOString(),
-  changes: []
-};
-
-// Načítanie dát
-function loadData() {
-  return syncData;
-}
-
-// Uloženie dát
-function saveData(data) {
-  syncData = data;
-  return true;
-}
+const storage = require('./storage');
 
 module.exports = async function handler(req, res) {
   // CORS headers
@@ -40,8 +26,6 @@ module.exports = async function handler(req, res) {
         });
       }
 
-      const sync = loadData();
-      
       // Pridať zmenu do histórie
       const change = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -52,16 +36,9 @@ module.exports = async function handler(req, res) {
         timestamp: new Date().toISOString(),
       };
 
-      sync.changes.push(change);
-      sync.lastUpdate = new Date().toISOString();
+      await storage.addSyncChange(change);
 
-      // Zachovať len posledných 1000 zmien (pre výkon)
-      if (sync.changes.length > 1000) {
-        sync.changes = sync.changes.slice(-1000);
-      }
-
-      saveData(sync);
-
+      const sync = await storage.getSyncData();
       return res.status(200).json({ 
         success: true, 
         message: 'Change registered successfully',
@@ -79,9 +56,9 @@ module.exports = async function handler(req, res) {
     try {
       const { since, batchNumber } = req.query;
 
-      const sync = loadData();
+      const sync = await storage.getSyncData();
 
-      let changes = sync.changes;
+      let changes = sync.changes || [];
 
       // Filtrovať podľa timestampu
       if (since) {

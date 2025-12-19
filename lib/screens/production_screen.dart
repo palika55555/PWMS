@@ -111,6 +111,22 @@ class _ProductionScreenState extends State<ProductionScreen> {
       await _qualitySyncService.syncAllQualityFromAPI(batchNumbers);
       await _shipmentSyncService.syncAllShipmentsFromAPI(batchNumbers);
       
+      // Registrovať zmeny pre real-time sync
+      for (var batchNumber in batchNumbers) {
+        _realtimeSync.registerChange(
+          type: 'quality',
+          batchNumber: batchNumber,
+          changeData: {'synced': true, 'source': 'app'},
+          source: 'app',
+        );
+        _realtimeSync.registerChange(
+          type: 'shipment',
+          batchNumber: batchNumber,
+          changeData: {'synced': true, 'source': 'app'},
+          source: 'app',
+        );
+      }
+      
       // Obnoviť dáta
       await _loadData();
       

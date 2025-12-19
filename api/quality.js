@@ -1,20 +1,7 @@
 // Vercel serverless function pre ukladanie a načítanie kvality šarží
-// POZNÁMKA: Toto používa in-memory storage, ktorý sa stratí po redeploy
-// Pre produkciu odporúčame použiť Vercel KV, databázu alebo externý storage
+// Používa storage helper, ktorý podporuje Vercel KV alebo fallback na in-memory
 
-// In-memory storage (pre jednoduchosť - v produkcii použiť databázu)
-let qualityData = {};
-
-// Načítanie dát (pre teraz z in-memory, neskôr z databázy)
-function loadData() {
-  return qualityData;
-}
-
-// Uloženie dát (pre teraz do in-memory, neskôr do databázy)
-function saveData(data) {
-  qualityData = data;
-  return true;
-}
+const storage = require('./storage');
 
 module.exports = async function handler(req, res) {
   // CORS headers
@@ -37,12 +24,7 @@ module.exports = async function handler(req, res) {
         });
       }
 
-      const data = loadData();
-      if (!data.quality) {
-        data.quality = {};
-      }
-
-      data.quality[batchNumber] = {
+      const qualityData = {
         status,
         notes: notes || null,
         checkedBy: checkedBy || null,
@@ -50,7 +32,7 @@ module.exports = async function handler(req, res) {
         updatedAt: new Date().toISOString(),
       };
 
-      if (saveData(data)) {
+      if (await storage.setQualityForBatch(batchNumber, qualityData)) {
         // Registrovať zmenu v sync API
         try {
           const syncUrl = req.headers.host 
@@ -63,7 +45,7 @@ module.exports = async function handler(req, res) {
             body: JSON.stringify({
               type: 'quality',
               batchNumber: batchNumber,
-              data: data.quality[batchNumber],
+              data: qualityData,
               source: 'web',
             }),
           }).catch(() => {
@@ -76,7 +58,7 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ 
           success: true, 
           message: 'Quality status saved successfully',
-          data: data.quality[batchNumber]
+          data: qualityData
         });
       } else {
         return res.status(500).json({ error: 'Failed to save data' });
@@ -92,11 +74,9 @@ module.exports = async function handler(req, res) {
     try {
       const { batchNumber } = req.query;
 
-      const data = loadData();
-
       if (batchNumber) {
         // Konkrétna šarža
-        const quality = data.quality?.[batchNumber] || null;
+        const quality = await storage.getQualityForBatch(batchNumber);
         return res.status(200).json({ 
           success: true, 
           batchNumber,
@@ -104,9 +84,10 @@ module.exports = async function handler(req, res) {
         });
       } else {
         // Všetky šarže
+        const quality = await storage.getQuality();
         return res.status(200).json({ 
           success: true, 
-          quality: data.quality || {} 
+          quality: quality || {} 
         });
       }
     } catch (error) {
