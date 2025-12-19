@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:universal_html/html.dart' as html;
+import '../services/realtime_sync_service.dart';
 
 class ProductionDetailsWeb extends StatefulWidget {
   final Map<String, dynamic>? productionData;
@@ -23,6 +25,8 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
   Map<String, String?> _shippedDates = {}; // batchNumber -> shippedDate
   bool _isLoading = false;
   String? _errorMessage;
+  final RealtimeSyncService _realtimeSync = RealtimeSyncService();
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
@@ -32,8 +36,48 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
       if (mounted) {
         _loadQualityStatuses();
         _loadShipmentStatuses();
+        _startRealtimeSync();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _realtimeSync.stopRealtimeSync();
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startRealtimeSync() {
+    // Auto-refresh každých 5 sekúnd
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) {
+        _loadQualityStatuses();
+        _loadShipmentStatuses();
+      }
+    });
+
+    // Real-time sync cez sync API
+    _realtimeSync.startRealtimeSync(
+      onChange: (change) {
+        if (!mounted) return;
+        
+        final type = change['type'] as String?;
+        final batchNumber = change['batchNumber'] as String?;
+        final source = change['source'] as String?;
+        
+        // Ignorovať zmeny z tohto zdroja (web)
+        if (source == 'web') return;
+        
+        // Aktualizovať UI podľa typu zmeny
+        if (type == 'quality' && batchNumber != null) {
+          _loadQualityStatuses();
+        } else if (type == 'shipment' && batchNumber != null) {
+          _loadShipmentStatuses();
+        }
+      },
+      interval: const Duration(seconds: 3),
+    );
   }
 
   Future<void> _loadQualityStatuses() async {
@@ -147,6 +191,17 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
               _qualityStatuses[batchNumber] = status;
               _qualityNotes[batchNumber] = notes;
             });
+            
+            // Registrovať zmenu pre real-time sync
+            _realtimeSync.registerChange(
+              type: 'quality',
+              batchNumber: batchNumber,
+              changeData: {
+                'status': status,
+                'notes': notes,
+              },
+              source: 'web',
+            );
             
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -388,6 +443,17 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
                 _shippedStatuses[batchNumber] = shipped;
                 _shippedDates[batchNumber] = data['data']?['shippedDate'];
               });
+              
+              // Registrovať zmenu pre real-time sync
+              _realtimeSync.registerChange(
+                type: 'shipment',
+                batchNumber: batchNumber,
+                changeData: {
+                  'shipped': shipped,
+                  'shippedDate': data['data']?['shippedDate'],
+                },
+                source: 'web',
+              );
               
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

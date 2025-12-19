@@ -51,6 +51,28 @@ module.exports = async function handler(req, res) {
       };
 
       if (saveData(data)) {
+        // Registrovať zmenu v sync API
+        try {
+          const syncUrl = req.headers.host 
+            ? `https://${req.headers.host}/api/sync`
+            : 'http://localhost:3000/api/sync';
+          
+          await fetch(syncUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'quality',
+              batchNumber: batchNumber,
+              data: data.quality[batchNumber],
+              source: 'web',
+            }),
+          }).catch(() => {
+            // Ignorovať chyby sync API - nie je kritické
+          });
+        } catch (e) {
+          // Ignorovať chyby sync API
+        }
+
         return res.status(200).json({ 
           success: true, 
           message: 'Quality status saved successfully',

@@ -11,6 +11,24 @@ import 'package:universal_html/html.dart' as html;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Potlačenie neškodných accessibility chýb na Windows
+  FlutterError.onError = (FlutterErrorDetails details) {
+    // Filtrovať accessibility chyby na Windows
+    final errorString = details.exception.toString().toLowerCase();
+    final stackString = details.stack?.toString().toLowerCase() ?? '';
+    if (errorString.contains('accessibility_plugin') ||
+        errorString.contains('viewid') ||
+        errorString.contains('flutterviewid') ||
+        stackString.contains('accessibility_plugin')) {
+      // Tieto chyby nie sú kritické - len varovania z Windows accessibility API
+      // Ignorovať ich, aby neobťažovali konzolu
+      return;
+    }
+    
+    // Pre ostatné chyby použiť default handling
+    FlutterError.presentError(details);
+  };
+  
   // Inicializácia databázy (preskočiť na web - nie je potrebná pre production details view)
   if (!kIsWeb) {
     try {
@@ -119,7 +137,7 @@ class ProductionDetailsWebRoute extends StatelessWidget {
               const SizedBox(height: 16),
               Text('Chyba pri dekódovaní dát: $e'),
               const SizedBox(height: 8),
-              Text('URL parameter: ${dataParam?.substring(0, dataParam.length > 50 ? 50 : dataParam.length)}...'),
+              Text('URL parameter: ${dataParam.substring(0, dataParam.length > 50 ? 50 : dataParam.length)}...'),
             ],
           ),
         ),

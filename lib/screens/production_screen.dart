@@ -10,7 +10,9 @@ import '../services/alert_service.dart';
 import '../services/quality_service.dart';
 import '../services/quality_sync_service.dart';
 import '../services/shipment_sync_service.dart';
+import '../services/realtime_sync_service.dart';
 import '../services/recipe_service.dart';
+import 'dart:async';
 import '../models/material.dart' as models;
 import '../models/product.dart';
 
@@ -28,6 +30,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
   final RecipeService _recipeService = RecipeService();
   final QualitySyncService _qualitySyncService = QualitySyncService();
   final ShipmentSyncService _shipmentSyncService = ShipmentSyncService();
+  final RealtimeSyncService _realtimeSync = RealtimeSyncService();
   
   List<models.Material> _materials = [];
   List<Product> _products = [];
@@ -41,6 +44,43 @@ class _ProductionScreenState extends State<ProductionScreen> {
   void initState() {
     super.initState();
     _loadData();
+    _startRealtimeSync();
+  }
+
+  @override
+  void dispose() {
+    _realtimeSync.stopRealtimeSync();
+    super.dispose();
+  }
+
+  void _startRealtimeSync() {
+    if (kIsWeb) return; // Na web sa používa iný mechanizmus
+    
+    // Real-time sync každých 5 sekúnd
+    _realtimeSync.startRealtimeSync(
+      onChange: (change) {
+        if (!mounted) return;
+        
+        final type = change['type'] as String?;
+        final batchNumber = change['batchNumber'] as String?;
+        final source = change['source'] as String?;
+        
+        // Ignorovať zmeny z aplikácie (sme to my)
+        if (source == 'app') return;
+        
+        // Ak je zmena z webu, synchronizovať
+        if (type == 'quality' && batchNumber != null) {
+          _qualitySyncService.syncQualityFromAPI(batchNumber).then((_) {
+            if (mounted) _loadData();
+          });
+        } else if (type == 'shipment' && batchNumber != null) {
+          _shipmentSyncService.syncShipmentFromAPI(batchNumber).then((_) {
+            if (mounted) _loadData();
+          });
+        }
+      },
+      interval: const Duration(seconds: 5),
+    );
   }
 
   Future<void> _syncQualityFromWeb() async {
@@ -878,11 +918,28 @@ class _ProductionScreenState extends State<ProductionScreen> {
 
                 if (context.mounted) {
                   if (result['success'] == true) {
+                    final batchNumber = result['batchNumber'] as String?;
+                    
+                    // Registrovať zmenu pre real-time sync
+                    if (batchNumber != null) {
+                      _realtimeSync.registerChange(
+                        type: 'production',
+                        batchNumber: batchNumber,
+                        changeData: {
+                          'productId': selectedProductId,
+                          'quantity': quantity,
+                          'materialsUsed': materialsUsed,
+                          'notes': notesController.text.isEmpty ? null : notesController.text,
+                        },
+                        source: 'app',
+                      );
+                    }
+                    
                     Navigator.pop(context);
                     _loadData();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Výroba bola zaznamenaná\nŠarža: ${result['batchNumber']}'),
+                        content: Text('Výroba bola zaznamenaná\nŠarža: $batchNumber'),
                         backgroundColor: Colors.green,
                         duration: const Duration(seconds: 3),
                       ),
@@ -984,6 +1041,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 );
 
                 if (result > 0 && context.mounted) {
+                  // Registrovať zmenu pre real-time sync
+                  _realtimeSync.registerChange(
+                    type: 'quality',
+                    batchNumber: batch.batchNumber,
+                    changeData: {
+                      'status': selectedStatus,
+                      'notes': notesController.text.isEmpty ? null : notesController.text,
+                    },
+                    source: 'app',
+                  );
+                  
                   Navigator.pop(context);
                   _loadData();
                   ScaffoldMessenger.of(context).showSnackBar(
