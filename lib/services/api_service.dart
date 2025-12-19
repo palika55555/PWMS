@@ -5,10 +5,11 @@ import '../models/material.dart';
 import '../models/warehouse.dart';
 import '../models/production_type.dart';
 import '../models/production.dart';
+import '../config/api_config.dart';
 import 'app_state.dart';
 
 class ApiService extends ChangeNotifier {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = ApiConfig.baseUrl;
   
   bool _isOnline = true;
   bool get isOnline => _isOnline;
