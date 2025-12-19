@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:universal_html/html.dart' as html;
 
-class ProductionDetailsWeb extends StatelessWidget {
+class ProductionDetailsWeb extends StatefulWidget {
   final Map<String, dynamic>? productionData;
 
   const ProductionDetailsWeb({
@@ -9,8 +13,245 @@ class ProductionDetailsWeb extends StatelessWidget {
   });
 
   @override
+  State<ProductionDetailsWeb> createState() => _ProductionDetailsWebState();
+}
+
+class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
+  Map<String, String> _qualityStatuses = {}; // batchNumber -> status
+  Map<String, String?> _qualityNotes = {}; // batchNumber -> notes
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQualityStatuses();
+  }
+
+  Future<void> _loadQualityStatuses() async {
+    if (!kIsWeb || widget.productionData == null) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
+      final baseUrl = html.window.location.origin;
+      
+      // Načítať kvalitu pre každú šaržu
+      for (var batchNum in batchNumbers) {
+        if (batchNum == null) continue;
+        
+        try {
+          final response = await http.get(
+            Uri.parse('$baseUrl/api/quality?batchNumber=$batchNum'),
+          );
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            if (data['success'] == true && data['quality'] != null) {
+              setState(() {
+                _qualityStatuses[batchNum.toString()] = data['quality']['status'] ?? 'pending';
+                _qualityNotes[batchNum.toString()] = data['quality']['notes'];
+              });
+            }
+          }
+        } catch (e) {
+          print('Error loading quality for $batchNum: $e');
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Chyba pri načítaní stavu kvality: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _updateQualityStatus(String batchNumber, String status, {String? notes}) async {
+    if (!kIsWeb) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final baseUrl = html.window.location.origin;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/quality'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'batchNumber': batchNumber,
+          'status': status,
+          'notes': notes,
+          'checkedBy': 'Web User', // V produkcii by to bolo z prihlásenia
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          setState(() {
+            _qualityStatuses[batchNumber] = status;
+            _qualityNotes[batchNumber] = notes;
+          });
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Kvalita šarže $batchNumber bola aktualizovaná'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+      } else {
+        throw Exception('Failed to update quality: ${response.body}');
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Chyba pri aktualizácii kvality: $e';
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chyba: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _showQualityDialog(String batchNumber) {
+    final currentStatus = _qualityStatuses[batchNumber] ?? 'pending';
+    final currentNotes = _qualityNotes[batchNumber] ?? '';
+    final notesController = TextEditingController(text: currentNotes);
+    String selectedStatus = currentStatus;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Potvrdiť kvalitu - $batchNumber'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Vyberte stav kvality:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                RadioListTile<String>(
+                  title: const Text('Schválené'),
+                  subtitle: const Text('Výrobok spĺňa požiadavky'),
+                  value: 'passed',
+                  groupValue: selectedStatus,
+                  onChanged: (value) => setDialogState(() => selectedStatus = value!),
+                  activeColor: Colors.green,
+                ),
+                RadioListTile<String>(
+                  title: const Text('Varovanie'),
+                  subtitle: const Text('Výrobok má menšie nedostatky'),
+                  value: 'warning',
+                  groupValue: selectedStatus,
+                  onChanged: (value) => setDialogState(() => selectedStatus = value!),
+                  activeColor: Colors.orange,
+                ),
+                RadioListTile<String>(
+                  title: const Text('Zamietnuté'),
+                  subtitle: const Text('Výrobok nespĺňa požiadavky'),
+                  value: 'failed',
+                  groupValue: selectedStatus,
+                  onChanged: (value) => setDialogState(() => selectedStatus = value!),
+                  activeColor: Colors.red,
+                ),
+                RadioListTile<String>(
+                  title: const Text('Čaká'),
+                  subtitle: const Text('Ešte nebolo skontrolované'),
+                  value: 'pending',
+                  groupValue: selectedStatus,
+                  onChanged: (value) => setDialogState(() => selectedStatus = value!),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: notesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Poznámky',
+                    hintText: 'Voliteľné poznámky k kontrole kvality',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Zrušiť'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _updateQualityStatus(
+                  batchNumber,
+                  selectedStatus,
+                  notes: notesController.text.trim().isEmpty 
+                      ? null 
+                      : notesController.text.trim(),
+                );
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Uložiť'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'passed':
+        return Colors.green;
+      case 'failed':
+        return Colors.red;
+      case 'warning':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getStatusLabel(String status) {
+    switch (status) {
+      case 'passed':
+        return 'Schválené';
+      case 'failed':
+        return 'Zamietnuté';
+      case 'warning':
+        return 'Varovanie';
+      default:
+        return 'Čaká';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (productionData == null) {
+    if (widget.productionData == null) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Detaily výroby'),
@@ -21,11 +262,11 @@ class ProductionDetailsWeb extends StatelessWidget {
       );
     }
 
-    final date = productionData!['date'] as String?;
-    final batches = productionData!['batches'] as int? ?? 0;
-    final totalQuantity = productionData!['total_quantity'] as int? ?? 0;
-    final products = productionData!['products'] as Map<String, dynamic>? ?? {};
-    final batchNumbers = productionData!['batch_numbers'] as List? ?? [];
+    final date = widget.productionData!['date'] as String?;
+    final batches = widget.productionData!['batches'] as int? ?? 0;
+    final totalQuantity = widget.productionData!['total_quantity'] as int? ?? 0;
+    final products = widget.productionData!['products'] as Map<String, dynamic>? ?? {};
+    final batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
 
     // Parsovanie dátumu
     DateTime? parsedDate;
@@ -193,16 +434,63 @@ class ProductionDetailsWeb extends StatelessWidget {
                         runSpacing: 8,
                         children: batchNumbers.map((batchNum) {
                           if (batchNum == null) return const SizedBox.shrink();
-                          return Chip(
-                            label: Text(
-                              batchNum.toString(),
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                          final batchStr = batchNum.toString();
+                          final status = _qualityStatuses[batchStr] ?? 'pending';
+                          final statusColor = _getStatusColor(status);
+                          
+                          return InkWell(
+                            onTap: () => _showQualityDialog(batchStr),
+                            child: Chip(
+                              label: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    batchStr,
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: statusColor,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      _getStatusLabel(status),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: Colors.purple.shade50,
+                              avatar: const Icon(Icons.tag, size: 18),
+                              deleteIcon: _isLoading 
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.edit, size: 18),
+                              onDeleted: () => _showQualityDialog(batchStr),
                             ),
-                            backgroundColor: Colors.purple.shade50,
-                            avatar: const Icon(Icons.tag, size: 18),
                           );
                         }).toList(),
                       ),
+                      if (_errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
                     ],
                   ),
                 ),

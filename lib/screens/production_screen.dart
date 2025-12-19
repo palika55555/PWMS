@@ -8,6 +8,7 @@ import '../services/material_service.dart';
 import '../services/production_service.dart';
 import '../services/alert_service.dart';
 import '../services/quality_service.dart';
+import '../services/quality_sync_service.dart';
 import '../services/recipe_service.dart';
 import '../models/material.dart' as models;
 import '../models/product.dart';
@@ -24,6 +25,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
   final ProductionService _productionService = ProductionService();
   final AlertService _alertService = AlertService();
   final RecipeService _recipeService = RecipeService();
+  final QualitySyncService _qualitySyncService = QualitySyncService();
   
   List<models.Material> _materials = [];
   List<Product> _products = [];
@@ -37,6 +39,55 @@ class _ProductionScreenState extends State<ProductionScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  Future<void> _syncQualityFromWeb() async {
+    try {
+      // Získať všetky batch numbers z posledných šarží
+      final allBatches = await _productionService.getProductionBatches(limit: 100);
+      final batchNumbers = allBatches.map((b) => b.batchNumber).toList();
+      
+      if (batchNumbers.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Žiadne šarže na synchronizáciu')),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Synchronizujem kvalitu pre ${batchNumbers.length} šarží...'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      await _qualitySyncService.syncAllQualityFromAPI(batchNumbers);
+      
+      // Obnoviť dáta
+      await _loadData();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kvalita bola úspešne synchronizovaná'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chyba pri synchronizácii: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadData() async {
@@ -81,6 +132,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
             tooltip: 'Obnoviť',
+          ),
+          IconButton(
+            icon: const Icon(Icons.cloud_sync),
+            onPressed: _syncQualityFromWeb,
+            tooltip: 'Synchronizovať kvalitu z webu',
           ),
           IconButton(
             icon: const Icon(Icons.inventory),
@@ -1123,6 +1179,12 @@ class _ProductionScreenState extends State<ProductionScreen> {
       'total_quantity': totalQuantity,
       'products': productsSummary,
       'batch_numbers': batches.map((b) => b.batchNumber).toList(),
+      'batch_data': batches.map((b) => {
+        'id': b.id,
+        'batchNumber': b.batchNumber,
+        'productName': b.productName,
+        'quantity': b.quantity,
+      }).toList(),
     };
     
     // Vždy používať URL - na web aktuálnu URL, inak použijeme placeholder
