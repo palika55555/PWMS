@@ -661,59 +661,120 @@ class _MaterialDialog extends StatefulWidget {
 class _MaterialDialogState extends State<_MaterialDialog> {
   material_model.Material? _selectedMaterial;
   final _quantityController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Pridať materiál'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          DropdownButtonFormField<material_model.Material>(
-            value: _selectedMaterial,
-            decoration: const InputDecoration(
-              labelText: 'Materiál',
-              border: OutlineInputBorder(),
-            ),
-            items: widget.materials.map((material) {
-              return DropdownMenuItem<material_model.Material>(
-                value: material,
-                child: Text('${material.name} (${material.unit})'),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() => _selectedMaterial = value);
-            },
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _quantityController,
-            decoration: const InputDecoration(
-              labelText: 'Množstvo',
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.number,
-          ),
-        ],
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.materials.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Icon(Icons.warning, color: Colors.orange, size: 48),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Žiadne materiály',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Najprv musíte vytvoriť materiály v sekcii Sklad alebo spustiť seed script.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Spustite: npm run seed:materials'),
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.info),
+                      label: const Text('Ako pridať materiály?'),
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              DropdownButtonFormField<material_model.Material>(
+                value: _selectedMaterial,
+                decoration: const InputDecoration(
+                  labelText: 'Materiál',
+                  border: OutlineInputBorder(),
+                  hintText: 'Vyberte materiál',
+                ),
+                items: widget.materials.map((material) {
+                  return DropdownMenuItem<material_model.Material>(
+                    value: material,
+                    child: Text('${material.name} (${material.unit})'),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() => _selectedMaterial = value);
+                },
+                validator: (value) {
+                  if (value == null) {
+                    return 'Vyberte materiál';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'Množstvo',
+                  border: OutlineInputBorder(),
+                  hintText: 'Zadajte množstvo',
+                ),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Zadajte množstvo';
+                  }
+                  final quantity = double.tryParse(value);
+                  if (quantity == null || quantity <= 0) {
+                    return 'Množstvo musí byť kladné číslo';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ],
+        ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Zrušiť'),
         ),
-        ElevatedButton(
-          onPressed: () {
-            if (_selectedMaterial != null &&
-                _quantityController.text.isNotEmpty) {
-              final quantity = double.tryParse(_quantityController.text);
-              if (quantity != null && quantity > 0) {
-                widget.onAdd(_selectedMaterial!.id, quantity);
-                Navigator.pop(context);
+        if (widget.materials.isNotEmpty)
+          ElevatedButton(
+            onPressed: () {
+              if (_formKey.currentState!.validate()) {
+                if (_selectedMaterial != null &&
+                    _quantityController.text.isNotEmpty) {
+                  final quantity = double.tryParse(_quantityController.text);
+                  if (quantity != null && quantity > 0) {
+                    widget.onAdd(_selectedMaterial!.id, quantity);
+                    Navigator.pop(context);
+                  }
+                }
               }
-            }
-          },
-          child: const Text('Pridať'),
-        ),
+            },
+            child: const Text('Pridať'),
+          ),
       ],
     );
   }

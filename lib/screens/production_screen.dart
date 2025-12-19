@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide Material;
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -48,6 +49,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
       final batches = await apiService.getBatches();
       final batchesByDay = await apiService.getBatchesByDays(days: 30);
       final alerts = await apiService.checkLowStock();
+      
+      // Debug: skontrolujme, či sa materiály načítali
+      debugPrint('Načítané materiály: ${materials.length}');
+      for (var material in materials) {
+        debugPrint('  - ${material.name} (${material.id})');
+      }
+      debugPrint('Načítané warehouse položky: ${warehouse.length}');
+      for (var item in warehouse) {
+        debugPrint('  - Material ID: ${item.materialId}, Quantity: ${item.quantity}');
+      }
+      
       setState(() {
         _productions = productions;
         _productionTypes = types;
@@ -59,6 +71,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      debugPrint('Chyba pri načítaní dát: $e');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -215,56 +228,96 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            ..._materials.map((material) {
-              final quantity = _getMaterialQuantity(material.id);
-              final statusColor = _getMaterialStatusColor(quantity);
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            material.name,
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        ],
+            if (_materials.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Žiadne materiály',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${quantity.toStringAsFixed(2)} ${material.unit}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: statusColor,
-                            ),
-                          ),
-                          if (quantity == 0 || quantity < 100)
-                            Text(
-                              quantity == 0 ? 'KRITICKÉ!' : 'NÍZKE',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: statusColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                        ],
+                      const SizedBox(height: 8),
+                      Text(
+                        'Pridajte materiály v sekcii Sklad',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              );
-            }),
+              )
+            else
+              ..._materials.map((material) => _buildMaterialRow(material)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMaterialRow(material_model.Material material) {
+    final quantity = _getMaterialQuantity(material.id);
+    Color statusColor = Colors.green;
+    bool isLowStock = false;
+    
+    if (quantity == 0) {
+      statusColor = Colors.red;
+      isLowStock = true;
+    } else if (quantity < 100) {
+      statusColor = Colors.orange;
+      isLowStock = true;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  material.name,
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${quantity.toStringAsFixed(2)} ${material.unit}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: statusColor,
+                  ),
+                ),
+                if (isLowStock)
+                  Text(
+                    quantity == 0 ? 'KRITICKÉ!' : 'NÍZKE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: statusColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
