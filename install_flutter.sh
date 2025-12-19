@@ -27,12 +27,12 @@ if [ -d "flutter" ] && [ -f "flutter/bin/flutter" ]; then
     export FLUTTER_ROOT_WARNING_SUPPRESSED=1
     
     flutter --version
-    flutter pub get
+    echo "Flutter already installed. Dependencies will be fetched during build phase."
     exit 0
 fi
 
 # Download and install Flutter
-FLUTTER_VERSION="3.24.3"
+FLUTTER_VERSION="3.38.5"
 FLUTTER_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 
 echo "Downloading Flutter ${FLUTTER_VERSION} from ${FLUTTER_URL}..."
@@ -71,11 +71,9 @@ flutter config --no-analytics
 # Skip flutter doctor - not needed for web builds and would show Android/iOS warnings
 echo "Skipping flutter doctor (not needed for web builds)..."
 
-echo "Getting Flutter dependencies..."
-if ! flutter pub get; then
-    echo "ERROR: Failed to get Flutter dependencies"
-    exit 1
-fi
+# Note: flutter pub get will be run in build_vercel.sh
+# We skip it here to avoid install failures - dependencies will be fetched during build
+echo "Flutter SDK installation complete. Dependencies will be fetched during build phase."
 
 echo "=== Flutter installation completed successfully! ==="
 

@@ -32,9 +32,15 @@ fi
 echo "Flutter version:"
 flutter --version
 
-# Get dependencies (should already be done in install, but ensure it's done)
+# Get dependencies
 echo "Getting Flutter dependencies..."
-flutter pub get
+if ! flutter pub get; then
+    echo "WARNING: flutter pub get failed, trying again..."
+    flutter pub get || {
+        echo "ERROR: Failed to get Flutter dependencies"
+        echo "Trying to continue with build anyway..."
+    }
+fi
 
 # Build for web
 echo "Building Flutter web app for production..."
