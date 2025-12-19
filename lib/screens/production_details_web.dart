@@ -104,6 +104,19 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
         return;
       }
 
+      // Najprv načítať stavy z QR kódu (ak sú dostupné)
+      final qualityStatusesFromQR = widget.productionData!['quality_statuses'] as Map<String, dynamic>?;
+      if (qualityStatusesFromQR != null) {
+        qualityStatusesFromQR.forEach((batchNum, statusData) {
+          if (statusData is Map<String, dynamic>) {
+            _qualityStatuses[batchNum] = statusData['status'] as String? ?? 'pending';
+            _qualityNotes[batchNum] = statusData['notes'] as String?;
+          }
+        });
+        print('Loaded quality statuses from QR code: ${_qualityStatuses.keys.length} batches');
+      }
+
+      // Potom načítať najnovšie dáta z API (prepíše stavy z QR kódu ak sú novšie)
       final baseUrl = html.window.location.origin;
       
       // Načítať kvalitu pre každú šaržu (s timeoutom a error handling)
@@ -362,6 +375,19 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
       final batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
       if (batchNumbers.isEmpty) return;
 
+      // Najprv načítať stavy z QR kódu (ak sú dostupné)
+      final shipmentStatusesFromQR = widget.productionData!['shipment_statuses'] as Map<String, dynamic>?;
+      if (shipmentStatusesFromQR != null) {
+        shipmentStatusesFromQR.forEach((batchNum, shipmentData) {
+          if (shipmentData is Map<String, dynamic>) {
+            _shippedStatuses[batchNum] = shipmentData['shipped'] as bool? ?? false;
+            _shippedDates[batchNum] = shipmentData['shippedDate'] as String?;
+          }
+        });
+        print('Loaded shipment statuses from QR code: ${_shippedStatuses.keys.length} batches');
+      }
+
+      // Potom načítať najnovšie dáta z API (prepíše stavy z QR kódu ak sú novšie)
       final baseUrl = html.window.location.origin;
       
       for (var batchNum in batchNumbers) {

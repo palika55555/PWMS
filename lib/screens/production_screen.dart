@@ -1348,6 +1348,38 @@ class _ProductionScreenState extends State<ProductionScreen> {
           (productsSummary[batch.productName] ?? 0) + batch.quantity;
     }
 
+    // Načítať aktuálne stavy kvality a expedovania pre každú šaržu
+    final Map<String, Map<String, dynamic>> qualityStatuses = {};
+    final Map<String, Map<String, dynamic>> shipmentStatuses = {};
+    
+    // Načítať kvalitu z databázy (už je v ProductionBatch objekte)
+    for (var batch in batches) {
+      qualityStatuses[batch.batchNumber] = {
+        'status': batch.qualityStatus,
+        'notes': batch.qualityNotes,
+        'updatedAt': DateTime.now().toIso8601String(),
+      };
+    }
+    
+    // Načítať expedovanie z API (ak je dostupné)
+    if (!kIsWeb) {
+      for (var batch in batches) {
+        try {
+          final shipment = await _shipmentSyncService.getShipmentFromAPI(batch.batchNumber);
+          if (shipment != null) {
+            shipmentStatuses[batch.batchNumber] = {
+              'shipped': shipment['shipped'] ?? false,
+              'shippedDate': shipment['shippedDate'],
+              'notes': shipment['notes'],
+            };
+          }
+        } catch (e) {
+          // Ignorovať chyby - expedovanie nie je kritické
+          print('Error loading shipment for ${batch.batchNumber}: $e');
+        }
+      }
+    }
+
     // Vytvoriť URL s base64 encoded dátami pre web zobrazenie
     final qrDataMap = {
       'date': date.toIso8601String(),
@@ -1360,7 +1392,12 @@ class _ProductionScreenState extends State<ProductionScreen> {
         'batchNumber': b.batchNumber,
         'productName': b.productName,
         'quantity': b.quantity,
+        'qualityStatus': b.qualityStatus,
+        'qualityNotes': b.qualityNotes,
       }).toList(),
+      'quality_statuses': qualityStatuses,
+      'shipment_statuses': shipmentStatuses,
+      'generatedAt': DateTime.now().toIso8601String(), // Timestamp generovania QR kódu
     };
     
     // Vždy používať URL - na web aktuálnu URL, inak použijeme placeholder
