@@ -53,9 +53,11 @@ export FLUTTER_ROOT_WARNING_SUPPRESSED=1
 echo "Flutter installed successfully!"
 flutter --version
 
-echo "Pre-configuring Flutter (this may take a moment)..."
+echo "Pre-configuring Flutter..."
 flutter config --no-analytics
-flutter doctor || true
+
+# Skip flutter doctor - not needed for web builds and would show Android/iOS warnings
+echo "Skipping flutter doctor (not needed for web builds)..."
 
 echo "Getting Flutter dependencies..."
 flutter pub get
