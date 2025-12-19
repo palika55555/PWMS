@@ -334,6 +334,26 @@ export const createLocalSchema = (db) => {
   `);
 };
 
+// Check if remote database schema exists
+export const checkRemoteSchemaExists = async (pool) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'materials'
+      );
+    `);
+    return result.rows[0].exists;
+  } catch (error) {
+    console.error('Error checking remote schema:', error.message);
+    return false;
+  } finally {
+    client.release();
+  }
+};
+
 export const createRemoteSchema = async (pool) => {
   const client = await pool.connect();
   try {

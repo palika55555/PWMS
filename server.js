@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { getLocalDb, getRemotePool, closeConnections } from './config/database.js';
-import { createLocalSchema, createRemoteSchema } from './models/database-schema.js';
+import { createLocalSchema, createRemoteSchema, checkRemoteSchemaExists } from './models/database-schema.js';
 import { SyncService } from './services/sync-service.js';
 
 import materialsRoutes from './routes/materials.js';
@@ -33,9 +33,19 @@ console.log('Local database initialized');
 // Initialize remote database if available
 const remotePool = getRemotePool();
 if (remotePool) {
-  createRemoteSchema(remotePool)
+  // Check if schema exists before creating (to avoid unnecessary operations)
+  checkRemoteSchemaExists(remotePool)
+    .then((schemaExists) => {
+      if (!schemaExists) {
+        console.log('Remote database schema not found, creating...');
+        return createRemoteSchema(remotePool);
+      } else {
+        console.log('Remote database schema already exists, skipping creation');
+        return Promise.resolve();
+      }
+    })
     .then(() => {
-      console.log('Remote database schema initialized');
+      console.log('Remote database ready');
     })
     .catch((error) => {
       console.error('Error initializing remote database:', error.message);

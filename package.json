@@ -14,7 +14,9 @@
     "seed:recipes:api": "node scripts/seed-recipes-api.js",
     "seed:materials": "node scripts/seed-materials.js",
     "seed:materials:api": "node scripts/seed-materials-api.js",
-    "seed:all": "node scripts/seed-materials-api.js && node scripts/seed-recipes-api.js"
+    "seed:all": "node scripts/seed-materials-api.js && node scripts/seed-recipes-api.js",
+    "backup:db": "node scripts/backup-database.js",
+    "restore:db": "node scripts/restore-database.js"
   },
   "keywords": ["production", "warehouse", "concrete", "management"],
   "author": "",
