@@ -1134,15 +1134,9 @@ class _ProductionScreenState extends State<ProductionScreen> {
       final encodedData = base64Encode(utf8.encode(jsonEncode(qrDataMap)));
       qrData = '$baseUrl/production?data=$encodedData';
     } else {
-      // Pre desktop: Použiť placeholder URL alebo JSON
-      // Používateľ môže nastaviť svoju Vercel URL v nastaveniach
-      // Pre teraz použijeme JSON pre spätnú kompatibilitu
-      // TODO: Pridať nastavenie pre Vercel URL
+      // Pre desktop: Použiť Vercel URL
       final encodedData = base64Encode(utf8.encode(jsonEncode(qrDataMap)));
-      // Použiť placeholder - používateľ musí nahradiť svojou URL po nasadení na Vercel
-      qrData = 'https://your-app.vercel.app/production?data=$encodedData';
-      // Alternatíva: JSON pre lokálne použitie
-      // qrData = jsonEncode(qrDataMap);
+      qrData = 'https://pwms.vercel.app/production?data=$encodedData';
     }
 
     await showDialog(
