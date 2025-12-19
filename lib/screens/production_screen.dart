@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart' hide Material;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:convert';
+import 'package:universal_html/html.dart' as html;
 import '../services/material_service.dart';
 import '../services/production_service.dart';
 import '../services/alert_service.dart';
@@ -1114,13 +1116,34 @@ class _ProductionScreenState extends State<ProductionScreen> {
           (productsSummary[batch.productName] ?? 0) + batch.quantity;
     }
 
-    final qrData = jsonEncode({
+    // Vytvoriť URL s base64 encoded dátami pre web zobrazenie
+    final qrDataMap = {
       'date': date.toIso8601String(),
       'batches': batches.length,
       'total_quantity': totalQuantity,
       'products': productsSummary,
       'batch_numbers': batches.map((b) => b.batchNumber).toList(),
-    });
+    };
+    
+    // Vždy používať URL - na web aktuálnu URL, inak použijeme placeholder
+    // ktorý používateľ môže nahradiť svojou Vercel URL
+    String qrData;
+    if (kIsWeb) {
+      // Na web vytvoriť URL s aktuálnou doménou
+      final baseUrl = html.window.location.origin;
+      final encodedData = base64Encode(utf8.encode(jsonEncode(qrDataMap)));
+      qrData = '$baseUrl/production?data=$encodedData';
+    } else {
+      // Pre desktop: Použiť placeholder URL alebo JSON
+      // Používateľ môže nastaviť svoju Vercel URL v nastaveniach
+      // Pre teraz použijeme JSON pre spätnú kompatibilitu
+      // TODO: Pridať nastavenie pre Vercel URL
+      final encodedData = base64Encode(utf8.encode(jsonEncode(qrDataMap)));
+      // Použiť placeholder - používateľ musí nahradiť svojou URL po nasadení na Vercel
+      qrData = 'https://your-app.vercel.app/production?data=$encodedData';
+      // Alternatíva: JSON pre lokálne použitie
+      // qrData = jsonEncode(qrDataMap);
+    }
 
     await showDialog(
       context: context,
@@ -1195,6 +1218,15 @@ class _ProductionScreenState extends State<ProductionScreen> {
               );
             },
           ),
+          if (!kIsWeb)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Text(
+                'Poznámka: Po nasadení na Vercel nahraďte URL v QR kóde',
+                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+              ),
+            ),
         ],
       ),
     );

@@ -12,6 +12,8 @@ Aplikácia na manažovanie výroby s lokálnou SQLite databázou pre Windows.
   - História výroby
 - **Sklad** - Správa materiálov a zásob
 - **QR Kód** - Skenovanie a generovanie QR kódov
+  - Generovanie QR kódov pre každý deň výroby
+  - Web zobrazenie podrobností po naskenovaní QR kódu (iPhone/Android)
 
 ## Požiadavky
 

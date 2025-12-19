@@ -59,6 +59,18 @@ vercel --prod
 
 Vercel automaticky poskytuje HTTPS, čo je potrebné pre prístup ku kamere.
 
+### Dôležité: Vypnúť Password Protection
+
+**Ak Vercel žiada o meno a heslo po naskenovaní QR kódu:**
+
+1. Vercel Dashboard → Váš projekt → **Settings**
+2. **Deployment Protection** → Vypnite **Password Protection**
+3. Uložte zmeny
+
+Bez toho nebude QR kód fungovať, pretože stránka bude chránená heslom.
+
+Pozri `VERCEL_PUBLIC_ACCESS.md` pre podrobnosti.
+
 ### Environment Variables (ak potrebujete)
 
 V Vercel dashboard → Settings → Environment Variables môžete pridať:
