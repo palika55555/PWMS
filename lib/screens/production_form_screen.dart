@@ -1,0 +1,348 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/api_service.dart';
+import '../models/production_type.dart';
+import '../models/material.dart';
+
+class ProductionFormScreen extends StatefulWidget {
+  const ProductionFormScreen({super.key});
+
+  @override
+  State<ProductionFormScreen> createState() => _ProductionFormScreenState();
+}
+
+class _ProductionFormScreenState extends State<ProductionFormScreen> {
+  final _formKey = GlobalKey<FormState>();
+  ProductionType? _selectedType;
+  double _quantity = 0;
+  final _notesController = TextEditingController();
+  DateTime _productionDate = DateTime.now();
+
+  List<ProductionType> _productionTypes = [];
+  List<Material> _materials = [];
+  List<Map<String, dynamic>> _selectedMaterials = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final types = await apiService.getProductionTypes();
+      final materials = await apiService.getMaterials();
+      setState(() {
+        _productionTypes = types;
+        _materials = materials;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chyba pri načítaní dát: $e')),
+        );
+      }
+    }
+  }
+
+  void _addMaterial() {
+    if (_materials.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Najprv musíte vytvoriť materiály')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => _MaterialDialog(
+        materials: _materials,
+        onAdd: (materialId, quantity) {
+          setState(() {
+            _selectedMaterials.add({
+              'materialId': materialId,
+              'quantity': quantity,
+            });
+          });
+        },
+      ),
+    );
+  }
+
+  void _removeMaterial(int index) {
+    setState(() {
+      _selectedMaterials.removeAt(index);
+    });
+  }
+
+  Future<void> _submitForm() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vyberte typ výroby')),
+      );
+      return;
+    }
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      await apiService.createProduction(
+        productionTypeId: _selectedType!.id,
+        quantity: _quantity,
+        materials: _selectedMaterials,
+        notes: _notesController.text.isEmpty ? null : _notesController.text,
+        productionDate: _productionDate,
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Výroba bola vytvorená')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chyba pri vytváraní: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Nová výroba'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(16.0),
+                children: [
+                  DropdownButtonFormField<ProductionType>(
+                    value: _selectedType,
+                    decoration: const InputDecoration(
+                      labelText: 'Typ výroby',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _productionTypes.map((type) {
+                      return DropdownMenuItem(
+                        value: type,
+                        child: Text(type.name),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() => _selectedType = value);
+                    },
+                    validator: (value) {
+                      if (value == null) return 'Vyberte typ výroby';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Množstvo',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Zadajte množstvo';
+                      }
+                      final qty = double.tryParse(value);
+                      if (qty == null || qty <= 0) {
+                        return 'Množstvo musí byť kladné číslo';
+                      }
+                      return null;
+                    },
+                    onSaved: (value) {
+                      _quantity = double.parse(value!);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    title: const Text('Dátum výroby'),
+                    subtitle: Text(
+                      '${_productionDate.day}.${_productionDate.month}.${_productionDate.year} ${_productionDate.hour}:${_productionDate.minute.toString().padLeft(2, '0')}',
+                    ),
+                    trailing: const Icon(Icons.calendar_today),
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: _productionDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                      );
+                      if (date != null) {
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(_productionDate),
+                        );
+                        if (time != null) {
+                          setState(() {
+                            _productionDate = DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                              time.hour,
+                              time.minute,
+                            );
+                          });
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _notesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Poznámky',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _addMaterial,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Pridať materiál'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (_selectedMaterials.isNotEmpty) ...[
+                    const Text(
+                      'Použité materiály:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    ..._selectedMaterials.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final material = entry.value;
+                      final materialName = _materials
+                          .firstWhere((m) => m.id == material['materialId'])
+                          .name;
+                      return Card(
+                        child: ListTile(
+                          title: Text(materialName),
+                          subtitle: Text('${material['quantity']}'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => _removeMaterial(index),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                  const SizedBox(height: 32),
+                  ElevatedButton(
+                    onPressed: _submitForm,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: const Text('Vytvoriť výrobu'),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+}
+
+class _MaterialDialog extends StatefulWidget {
+  final List<Material> materials;
+  final Function(String materialId, double quantity) onAdd;
+
+  const _MaterialDialog({
+    required this.materials,
+    required this.onAdd,
+  });
+
+  @override
+  State<_MaterialDialog> createState() => _MaterialDialogState();
+}
+
+class _MaterialDialogState extends State<_MaterialDialog> {
+  Material? _selectedMaterial;
+  final _quantityController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Pridať materiál'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<Material>(
+            value: _selectedMaterial,
+            decoration: const InputDecoration(
+              labelText: 'Materiál',
+              border: OutlineInputBorder(),
+            ),
+            items: widget.materials.map((material) {
+              return DropdownMenuItem(
+                value: material,
+                child: Text('${material.name} (${material.unit})'),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() => _selectedMaterial = value);
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _quantityController,
+            decoration: const InputDecoration(
+              labelText: 'Množstvo',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Zrušiť'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (_selectedMaterial != null &&
+                _quantityController.text.isNotEmpty) {
+              final quantity = double.tryParse(_quantityController.text);
+              if (quantity != null && quantity > 0) {
+                widget.onAdd(_selectedMaterial!.id, quantity);
+                Navigator.pop(context);
+              }
+            }
+          },
+          child: const Text('Pridať'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    _quantityController.dispose();
+    super.dispose();
+  }
+}
+

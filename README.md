@@ -9,24 +9,31 @@ Systém na evidenciu dát výroby betónových prvkov (tvárnice, dlažba, atď.
 - **QR Kódy**: Automatické generovanie QR kódov pre výrobky
 - **Offline podpora**: Aplikácia funguje lokálne bez internetu
 - **Synchronizácia**: Automatická synchronizácia dát s Railway PostgreSQL
+- **Desktop aplikácia**: Flutter desktopová aplikácia pre Windows
 
-## Technológie
+## Architektúra
 
+### Backend
 - Node.js + Express
 - SQLite (lokálna databáza)
 - PostgreSQL (Railway - cloud databáza)
-- QR Code generovanie
+- REST API
 
-## Inštalácia
+### Frontend
+- Flutter Desktop (Windows)
+- Material Design
+- Offline-first prístup
+
+## Inštalácia Backendu
 
 1. Nainštalujte závislosti:
 ```bash
 npm install
 ```
 
-2. Vytvorte `.env` súbor z `.env.example`:
+2. Vytvorte `.env` súbor z `env.example`:
 ```bash
-cp .env.example .env
+copy env.example .env
 ```
 
 3. Nastavte Railway PostgreSQL connection string v `.env`:
@@ -45,7 +52,7 @@ npm run migrate:remote
    - Pridajte secret `DATABASE_URL` s Railway PostgreSQL connection stringom
    - Viac informácií v `DEPLOYMENT.md`
 
-## Spustenie
+## Spustenie Backendu
 
 ### Vývojový režim:
 ```bash
@@ -58,6 +65,16 @@ npm start
 ```
 
 Server beží na `http://localhost:3000`
+
+## Inštalácia Frontendu (Flutter)
+
+Pozri `FLUTTER_SETUP.md` pre podrobné inštrukcie.
+
+### Rýchly štart:
+```bash
+flutter pub get
+flutter run -d windows
+```
 
 ## API Endpoints
 
@@ -105,7 +122,7 @@ Server beží na `http://localhost:3000`
 
 ## Offline režim
 
-Aplikácia používa SQLite databázu (`local.db`) pre lokálne ukladanie dát. Všetky operácie sa najprv ukladajú lokálne a automaticky sa pridávajú do synchronizačnej fronty.
+Backend používa SQLite databázu (`local.db`) pre lokálne ukladanie dát. Všetky operácie sa najprv ukladajú lokálne a automaticky sa pridávajú do synchronizačnej fronty.
 
 Keď je dostupné internetové pripojenie a Railway databáza, dáta sa automaticky synchronizujú podľa nastavenia `AUTO_SYNC` a `SYNC_INTERVAL` v `.env` súbore.
 
@@ -122,86 +139,52 @@ Alebo cez API:
 POST http://localhost:3000/api/sync
 ```
 
-## Príklady použitia
+## Automatické Migrácie
 
-### 1. Vytvorenie materiálu
+Po pushnutí na `main` vetvu sa automaticky spustia migrácie databázy cez GitHub Actions.
+
+**Nastavenie:**
+1. V GitHub repozitári: **Settings** → **Secrets and variables** → **Actions**
+2. Pridajte secret `DATABASE_URL` s Railway PostgreSQL connection stringom
+3. Viac informácií v `DEPLOYMENT.md`
+
+## Build Flutter aplikácie
+
+### Windows Release Build:
 ```bash
-POST /api/materials
-{
-  "name": "Cement",
-  "unit": "kg"
-}
+flutter build windows --release
 ```
 
-### 2. Pridanie materiálu na sklad
-```bash
-POST /api/warehouse
-{
-  "materialId": "material-uuid",
-  "quantity": 1000
-}
-```
-
-### 3. Vytvorenie typu výroby
-```bash
-POST /api/production/types
-{
-  "name": "Tvárnice",
-  "description": "Betónové tvárnice"
-}
-```
-
-### 4. Vytvorenie výroby
-```bash
-POST /api/production
-{
-  "productionTypeId": "type-uuid",
-  "quantity": 50,
-  "materials": [
-    {
-      "materialId": "cement-uuid",
-      "quantity": 500
-    },
-    {
-      "materialId": "water-uuid",
-      "quantity": 200
-    }
-  ],
-  "notes": "Výroba tvárnic pre projekt X"
-}
-```
-
-Materiály sa automaticky odpočítajú zo skladu pri vytváraní výroby.
+Výstupný `.exe` súbor bude v `build/windows/x64/runner/Release/pwms.exe`
 
 ## Štruktúra projektu
 
 ```
 PWMS/
-├── config/
-│   └── database.js          # Databázové pripojenia
-├── models/
-│   ├── database-schema.js   # Databázové schémy
-│   ├── Material.js          # Model materiálov
-│   ├── Warehouse.js         # Model skladu
-│   └── Production.js        # Model výroby
-├── routes/
-│   ├── materials.js         # API routes pre materiály
-│   ├── warehouse.js         # API routes pre sklad
-│   ├── production.js        # API routes pre výrobu
-│   └── sync.js              # API routes pre synchronizáciu
-├── services/
-│   └── sync-service.js      # Synchronizačná služba
-├── scripts/
-│   ├── migrate-local.js     # Migrácia lokálnej DB
-│   ├── migrate-remote.js    # Migrácia vzdialenej DB
-│   └── sync-to-remote.js    # Manuálna synchronizácia
-├── server.js                # Hlavný server súbor
-└── package.json
+├── lib/                          # Flutter aplikácia
+│   ├── main.dart
+│   ├── models/
+│   ├── screens/
+│   └── services/
+├── config/                       # Backend konfigurácia
+├── models/                       # Backend modely
+├── routes/                       # API routes
+├── scripts/                      # Utility skripty
+├── services/                     # Backend služby
+├── server.js                     # Hlavný server
+└── package.json                  # Backend dependencies
 ```
 
 ## Poznámky
 
-- Lokálna databáza (`local.db`) sa vytvorí automaticky pri prvom spustení
+- Lokálna databáza (`local.db`) sa vytvorí automaticky pri prvom spustení backendu
 - Všetky dáta sa najprv ukladajú lokálne, potom sa synchronizujú s Railway
 - QR kódy sa generujú automaticky pre každý výrobok
 - Pri odstránení výroby sa materiály automaticky vracajú na sklad
+- Automatické migrácie sa spúšťajú pri pushnutí na `main` vetvu (ak sú zmeny v `models/`, `scripts/` alebo `package.json`)
+
+## Dokumentácia
+
+- `FLUTTER_SETUP.md` - Návod na nastavenie Flutter prostredia
+- `DEPLOYMENT.md` - Návod na deployment a automatické migrácie
+- `SETUP.md` - Podrobný setup backendu
