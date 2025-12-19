@@ -4,12 +4,18 @@ import { getLocalDb } from '../config/database.js';
 export class Recipe {
   static getAll() {
     const db = getLocalDb();
-    return db.prepare(`
+    const recipes = db.prepare(`
       SELECT r.*, pt.name as production_type_name
       FROM recipes r
       JOIN production_types pt ON r.production_type_id = pt.id
       ORDER BY r.name
     `).all();
+    
+    // Pridáme materiály ku každému receptu
+    return recipes.map(recipe => {
+      recipe.materials = this.getMaterials(recipe.id);
+      return recipe;
+    });
   }
 
   static getById(id) {

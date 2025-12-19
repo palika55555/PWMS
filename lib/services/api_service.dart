@@ -222,6 +222,19 @@ class ApiService extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>> getRecipeById(String id) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/recipes/$id'));
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      throw Exception('Failed to load recipe');
+    } catch (e) {
+      debugPrint('Error loading recipe: $e');
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> calculateRecipeMaterials(String recipeId, double quantity) async {
     try {
       final response = await http.post(

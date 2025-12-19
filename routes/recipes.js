@@ -7,7 +7,17 @@ const router = express.Router();
 router.get('/', (req, res) => {
   try {
     const recipes = Recipe.getAll();
-    res.json(recipes);
+    // Format materials for frontend
+    const formattedRecipes = recipes.map(recipe => {
+      if (recipe.materials) {
+        recipe.materials = recipe.materials.map(m => ({
+          materialId: m.material_id || m.materialId,
+          quantityPerUnit: m.quantity_per_unit || m.quantityPerUnit,
+        }));
+      }
+      return recipe;
+    });
+    res.json(formattedRecipes);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

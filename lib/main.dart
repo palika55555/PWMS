@@ -24,10 +24,35 @@ class PWMSApp extends StatelessWidget {
         theme: ThemeData(
           primarySwatch: Colors.blue,
           useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF1E3A5F),
+            brightness: Brightness.light,
+          ),
           cardTheme: CardThemeData(
-            elevation: 2,
+            elevation: 4,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            shadowColor: Colors.black.withOpacity(0.1),
+          ),
+          appBarTheme: AppBarTheme(
+            elevation: 0,
+            centerTitle: true,
+            backgroundColor: const Color(0xFF1E3A5F),
+            foregroundColor: Colors.white,
+            titleTextStyle: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              elevation: 2,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),

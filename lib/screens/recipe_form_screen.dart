@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
 import '../models/production_type.dart';
 import '../models/material.dart' as material_model;
@@ -41,17 +42,49 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       final types = await apiService.getProductionTypes();
       final materials = await apiService.getMaterials();
       
-      if (widget.recipe != null && widget.recipe['production_type_id'] != null) {
-        final selectedType = types.firstWhere(
-          (t) => t.id == widget.recipe['production_type_id'],
-          orElse: () => types.first,
-        );
-        _selectedType = selectedType;
+      List<Map<String, dynamic>> recipeMaterials = [];
+      
+      if (widget.recipe != null) {
+        if (widget.recipe['production_type_id'] != null) {
+          final selectedType = types.firstWhere(
+            (t) => t.id == widget.recipe['production_type_id'],
+            orElse: () => types.first,
+          );
+          _selectedType = selectedType;
+        }
+        
+        // Načítanie materiálov receptu
+        if (widget.recipe['materials'] != null && 
+            (widget.recipe['materials'] as List).isNotEmpty) {
+          recipeMaterials = List<Map<String, dynamic>>.from(
+            (widget.recipe['materials'] as List).map((m) => {
+              'materialId': m['material_id'] ?? m['materialId'],
+              'quantityPerUnit': ((m['quantity_per_unit'] ?? m['quantityPerUnit']) as num).toDouble(),
+            })
+          );
+        } else if (widget.recipe['id'] != null) {
+          // Ak recept nemá materiály, skúsme ich načítať z API
+          try {
+            final recipeDetail = await apiService.getRecipeById(widget.recipe['id']);
+            if (recipeDetail['materials'] != null && 
+                (recipeDetail['materials'] as List).isNotEmpty) {
+              recipeMaterials = List<Map<String, dynamic>>.from(
+                (recipeDetail['materials'] as List).map((m) => {
+                  'materialId': m['material_id'] ?? m['materialId'],
+                  'quantityPerUnit': ((m['quantity_per_unit'] ?? m['quantityPerUnit']) as num).toDouble(),
+                })
+              );
+            }
+          } catch (e) {
+            debugPrint('Nepodarilo sa načítať materiály receptu: $e');
+          }
+        }
       }
       
       setState(() {
         _productionTypes = types;
         _materials = materials;
+        _recipeMaterials = recipeMaterials;
         _isLoading = false;
       });
     } catch (e) {
@@ -145,6 +178,55 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     }
   }
 
+  void _editMaterial(int index) {
+    final material = _recipeMaterials[index];
+    final materialObj = _materials.firstWhere(
+      (m) => m.id == material['materialId'] as String,
+    );
+
+    final quantityController = TextEditingController(
+      text: material['quantityPerUnit'].toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Upraviť ${materialObj.name}'),
+        content: TextFormField(
+          controller: quantityController,
+          decoration: InputDecoration(
+            labelText: 'Množstvo na 1 jednotku',
+            suffixText: materialObj.unit,
+            border: const OutlineInputBorder(),
+            hintText: 'napr. 50 pre 50 kg na 1 m²',
+          ),
+          keyboardType: TextInputType.number,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušiť'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newQuantity = double.tryParse(quantityController.text);
+              if (newQuantity != null && newQuantity > 0) {
+                setState(() {
+                  _recipeMaterials[index] = {
+                    'materialId': material['materialId'],
+                    'quantityPerUnit': newQuantity,
+                  };
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Uložiť'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -158,91 +240,256 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
-                  DropdownButtonFormField<ProductionType>(
-                    value: _selectedType,
-                    decoration: const InputDecoration(
-                      labelText: 'Typ výroby',
-                      border: OutlineInputBorder(),
+                  // Typ výroby
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.category, color: Colors.blue.shade700),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Základné informácie',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          DropdownButtonFormField<ProductionType>(
+                            value: _selectedType,
+                            decoration: const InputDecoration(
+                              labelText: 'Typ výroby *',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.inventory_2),
+                            ),
+                            items: _productionTypes.map((type) {
+                              return DropdownMenuItem(
+                                value: type,
+                                child: Text(type.name),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() => _selectedType = value);
+                            },
+                            validator: (value) {
+                              if (value == null) return 'Vyberte typ výroby';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _nameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Názov receptu *',
+                              border: OutlineInputBorder(),
+                              hintText: 'napr. Recept pre tvárnice C25/30',
+                              prefixIcon: Icon(Icons.label),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Zadajte názov receptu';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _descriptionController,
+                            decoration: const InputDecoration(
+                              labelText: 'Popis',
+                              border: OutlineInputBorder(),
+                              hintText: 'Popis receptúry, pomery, poznámky...',
+                              prefixIcon: Icon(Icons.description),
+                            ),
+                            maxLines: 3,
+                          ),
+                        ],
+                      ),
                     ),
-                    items: _productionTypes.map((type) {
-                      return DropdownMenuItem(
-                        value: type,
-                        child: Text(type.name),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() => _selectedType = value);
-                    },
-                    validator: (value) {
-                      if (value == null) return 'Vyberte typ výroby';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Názov receptu',
-                      border: OutlineInputBorder(),
-                      hintText: 'napr. Recept pre tvárnice C25/30',
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Zadajte názov receptu';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _descriptionController,
-                    decoration: const InputDecoration(
-                      labelText: 'Popis',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 3,
                   ),
                   const SizedBox(height: 24),
-                  const Text(
-                    'Materiály (na 1 jednotku výroby):',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: _addMaterial,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Pridať materiál'),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_recipeMaterials.isNotEmpty) ...[
-                    ..._recipeMaterials.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final material = entry.value;
-                      final materialName = _materials
-                          .firstWhere((m) => m.id == material['materialId'] as String)
-                          .name;
-                      final materialUnit = _materials
-                          .firstWhere((m) => m.id == material['materialId'] as String)
-                          .unit;
-                      return Card(
-                        child: ListTile(
-                          title: Text(materialName),
-                          subtitle: Text('${material['quantityPerUnit']} $materialUnit / jednotka'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => _removeMaterial(index),
+                  // Materiály
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.science, color: Colors.green.shade700),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Materiály (na 1 jednotku výroby)',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_recipeMaterials.isNotEmpty)
+                                Chip(
+                                  label: Text('${_recipeMaterials.length} materiálov'),
+                                  backgroundColor: Colors.green.shade50,
+                                ),
+                            ],
                           ),
-                        ),
-                      );
-                    }),
-                  ],
+                          const SizedBox(height: 8),
+                          Text(
+                            'Zadajte množstvo každého materiálu potrebného na výrobu 1 jednotky (napr. 1 m²)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _addMaterial,
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('Pridať materiál'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          if (_recipeMaterials.isNotEmpty) ...[
+                            ..._recipeMaterials.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final material = entry.value;
+                              final materialName = _materials
+                                  .firstWhere(
+                                    (m) => m.id == material['materialId'] as String,
+                                  )
+                                  .name;
+                              final materialUnit = _materials
+                                  .firstWhere(
+                                    (m) => m.id == material['materialId'] as String,
+                                  )
+                                  .unit;
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                color: Colors.grey.shade50,
+                                child: ListTile(
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.inventory_2,
+                                      color: Colors.green.shade700,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    materialName,
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Text(
+                                    '${material['quantityPerUnit']} $materialUnit / jednotka',
+                                    style: TextStyle(
+                                      color: Colors.grey[700],
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit),
+                                        onPressed: () => _editMaterial(index),
+                                        tooltip: 'Upraviť',
+                                        color: Colors.blue,
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete),
+                                        onPressed: () => _removeMaterial(index),
+                                        tooltip: 'Odstrániť',
+                                        color: Colors.red,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }),
+                          ] else
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.inventory_2_outlined,
+                                    size: 48,
+                                    color: Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Žiadne materiály',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Pridajte materiály pomocou tlačidla vyššie',
+                                    style: TextStyle(
+                                      color: Colors.grey[500],
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 32),
                   ElevatedButton(
                     onPressed: _submitForm,
                     style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    child: Text(widget.recipe == null ? 'Vytvoriť recept' : 'Uložiť zmeny'),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(widget.recipe == null ? Icons.add_circle : Icons.save),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.recipe == null
+                              ? 'Vytvoriť recept'
+                              : 'Uložiť zmeny',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

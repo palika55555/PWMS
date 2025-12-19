@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../models/production_type.dart';
 import '../models/material.dart' as material_model;
+import '../models/warehouse.dart';
 
 class ProductionFormScreen extends StatefulWidget {
   const ProductionFormScreen({super.key});
@@ -22,6 +23,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
 
   List<ProductionType> _productionTypes = [];
   List<material_model.Material> _materials = [];
+  List<Warehouse> _warehouse = [];
   List<dynamic> _recipes = [];
   List<Map<String, dynamic>> _selectedMaterials = [];
   bool _isLoading = true;
@@ -39,10 +41,12 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
       final apiService = Provider.of<ApiService>(context, listen: false);
       final types = await apiService.getProductionTypes();
       final materials = await apiService.getMaterials();
+      final warehouse = await apiService.getWarehouse();
       if (mounted) {
         setState(() {
           _productionTypes = types;
           _materials = materials;
+          _warehouse = warehouse;
           _isLoading = false;
         });
       }
@@ -54,6 +58,22 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
         );
       }
     }
+  }
+
+  double _getAvailableQuantity(String materialId) {
+    final warehouseItem = _warehouse.firstWhere(
+      (w) => w.materialId == materialId,
+      orElse: () => Warehouse(
+        id: '',
+        materialId: materialId,
+        quantity: 0,
+      ),
+    );
+    return warehouseItem.quantity;
+  }
+
+  bool _hasEnoughMaterial(String materialId, double required) {
+    return _getAvailableQuantity(materialId) >= required;
   }
 
   Future<void> _loadRecipes() async {
@@ -88,9 +108,23 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
         _selectedRecipe['id'],
         _quantity,
       );
-      setState(() {
-        _selectedMaterials = List<Map<String, dynamic>>.from(result['materials']);
-      });
+      
+      if (mounted) {
+        setState(() {
+          _selectedMaterials = List<Map<String, dynamic>>.from(result['materials']);
+        });
+        
+        // Zobrazíme informáciu o automatickom výpočte
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Materiály boli automaticky vypočítané pre ${_quantity.toStringAsFixed(2)} jednotiek',
+            ),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -130,6 +164,54 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     });
   }
 
+  void _editMaterialFromRecipe(int index) {
+    final material = _selectedMaterials[index];
+    final materialObj = _materials.firstWhere(
+      (m) => m.id == material['materialId'] as String,
+    );
+
+    final quantityController = TextEditingController(
+      text: material['quantity'].toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Upraviť ${materialObj.name}'),
+        content: TextFormField(
+          controller: quantityController,
+          decoration: InputDecoration(
+            labelText: 'Množstvo',
+            suffixText: materialObj.unit,
+            border: const OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušiť'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newQuantity = double.tryParse(quantityController.text);
+              if (newQuantity != null && newQuantity > 0) {
+                setState(() {
+                  _selectedMaterials[index] = {
+                    'materialId': material['materialId'],
+                    'quantity': newQuantity,
+                  };
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Uložiť'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedType == null) {
@@ -145,6 +227,59 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
       return;
     }
 
+    // Kontrola dostupnosti materiálov
+    final missingMaterials = <String>[];
+    for (final material in _selectedMaterials) {
+      final materialId = material['materialId'] as String;
+      final requiredQuantity = material['quantity'] as double;
+      if (!_hasEnoughMaterial(materialId, requiredQuantity)) {
+        final materialName = _materials
+            .firstWhere((m) => m.id == materialId)
+            .name;
+        missingMaterials.add(materialName);
+      }
+    }
+
+    if (missingMaterials.isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Nedostatok materiálov'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Nasledujúce materiály nie sú dostupné v dostatočnom množstve:'),
+              const SizedBox(height: 8),
+              ...missingMaterials.map((name) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('• $name', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  )),
+              const SizedBox(height: 16),
+              const Text('Chcete pokračovať aj tak?'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Zrušiť'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+              ),
+              child: const Text('Pokračovať'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) {
+        return;
+      }
+    }
+
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
       await apiService.createProduction(
@@ -157,7 +292,10 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Výroba bola vytvorená')),
+          SnackBar(
+            content: const Text('Výroba bola vytvorená'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -241,14 +379,18 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                           child: Text(recipe['name'] ?? 'Neznámy recept'),
                         );
                       }).toList(),
-                      onChanged: (value) {
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedRecipe = value;
+                      });
+                      if (value != null && _quantity > 0) {
+                        _calculateMaterialsFromRecipe();
+                      } else if (value == null) {
                         setState(() {
-                          _selectedRecipe = value;
+                          _selectedMaterials = [];
                         });
-                        if (value != null && _quantity > 0) {
-                          _calculateMaterialsFromRecipe();
-                        }
-                      },
+                      }
+                    },
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -273,10 +415,19 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                     onChanged: (value) {
                       final qty = double.tryParse(value);
                       if (qty != null && qty > 0) {
-                        _quantity = qty;
+                        setState(() {
+                          _quantity = qty;
+                        });
                         if (_useRecipe && _selectedRecipe != null) {
                           _calculateMaterialsFromRecipe();
                         }
+                      } else {
+                        setState(() {
+                          _quantity = 0;
+                          if (_useRecipe) {
+                            _selectedMaterials = [];
+                          }
+                        });
                       }
                     },
                   ),
@@ -338,33 +489,139 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                     const SizedBox(height: 16),
                   ],
                   if (_selectedMaterials.isNotEmpty) ...[
-                    const Text(
-                      'Použité materiály:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Použité materiály:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        if (_useRecipe)
+                          TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _useRecipe = false;
+                                _selectedRecipe = null;
+                              });
+                            },
+                            icon: const Icon(Icons.edit, size: 18),
+                            label: const Text('Upraviť'),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     ..._selectedMaterials.asMap().entries.map((entry) {
                       final index = entry.key;
                       final material = entry.value;
+                      final materialId = material['materialId'] as String;
+                      final requiredQuantity = material['quantity'] as double;
                       final materialName = _materials
-                          .firstWhere((m) => m.id == material['materialId'] as String)
+                          .firstWhere((m) => m.id == materialId)
                           .name;
                       final materialUnit = _materials
-                          .firstWhere((m) => m.id == material['materialId'] as String)
+                          .firstWhere((m) => m.id == materialId)
                           .unit;
+                      final availableQuantity = _getAvailableQuantity(materialId);
+                      final hasEnough = _hasEnoughMaterial(materialId, requiredQuantity);
+                      
                       return Card(
+                        color: hasEnough ? null : Colors.red.shade50,
                         child: ListTile(
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: hasEnough
+                                  ? Colors.green.shade100
+                                  : Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              hasEnough ? Icons.check_circle : Icons.warning,
+                              color: hasEnough ? Colors.green : Colors.red,
+                            ),
+                          ),
                           title: Text(materialName),
-                          subtitle: Text('${material['quantity']} $materialUnit'),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _useRecipe
+                                  ? Text(
+                                      'Potrebné: ${requiredQuantity.toStringAsFixed(2)} $materialUnit (z receptúry)',
+                                      style: TextStyle(
+                                        color: Colors.green[700],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    )
+                                  : Text(
+                                      'Potrebné: ${requiredQuantity.toStringAsFixed(2)} $materialUnit',
+                                    ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Dostupné: ${availableQuantity.toStringAsFixed(2)} $materialUnit',
+                                style: TextStyle(
+                                  color: hasEnough
+                                      ? Colors.grey[600]
+                                      : Colors.red[700],
+                                  fontSize: 12,
+                                  fontWeight: hasEnough
+                                      ? FontWeight.normal
+                                      : FontWeight.bold,
+                                ),
+                              ),
+                              if (!hasEnough)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Nedostatok: ${(requiredQuantity - availableQuantity).toStringAsFixed(2)} $materialUnit',
+                                    style: TextStyle(
+                                      color: Colors.red[700],
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                           trailing: !_useRecipe
                               ? IconButton(
                                   icon: const Icon(Icons.delete),
                                   onPressed: () => _removeMaterial(index),
                                 )
-                              : null,
+                              : IconButton(
+                                  icon: const Icon(Icons.edit),
+                                  onPressed: () => _editMaterialFromRecipe(index),
+                                  tooltip: 'Upraviť množstvo',
+                                ),
                         ),
                       );
                     }),
+                    if (_useRecipe && _selectedMaterials.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Materiály boli automaticky vypočítané z receptúry. Môžete ich upraviť kliknutím na ikonu edit.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue.shade900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                   const SizedBox(height: 32),
                   ElevatedButton(
