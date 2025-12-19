@@ -21,18 +21,24 @@ class DatabaseHelper {
     String dbPath;
     
     if (kIsWeb) {
-      // Web - použiť sqflite_web (funguje cez IndexedDB)
-      // Poznámka: sqflite_web je experimentálny, ale funguje
-      final databasesPath = await mobile.getDatabasesPath();
-      dbPath = join(databasesPath, filePath);
-      
-      return await mobile.openDatabase(
-        dbPath,
-        version: 4,
-        onCreate: _createDB,
-        onUpgrade: _upgradeDB,
-      );
-    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // Web - sqflite na web nefunguje dobre, použijeme jednoduchšie riešenie
+      // Pre web použijeme sqflite_common_ffi_web alebo in-memory databázu
+      try {
+        // Skúsiť použiť sqflite (môže zlyhať na web)
+        final databasesPath = await mobile.getDatabasesPath();
+        dbPath = join(databasesPath, filePath);
+        
+        return await mobile.openDatabase(
+          dbPath,
+          version: 4,
+          onCreate: _createDB,
+          onUpgrade: _upgradeDB,
+        );
+      } catch (e) {
+        // Ak sqflite zlyhá na web, vyhodíme chybu
+        throw Exception('Database initialization failed on web: $e. Web platform may not support SQLite.');
+      }
+    } else if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       // Desktop - použiť sqflite_common_ffi
       desktop.sqfliteFfiInit();
       desktop.databaseFactory = desktop.databaseFactoryFfi;
@@ -305,30 +311,35 @@ class DatabaseHelper {
     ];
 
     for (var material in defaultMaterials) {
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        await db.insert(
-          'materials',
-          {
-            'name': material['name'],
-            'unit': material['unit'],
-            'quantity': material['quantity'],
-            'min_quantity': material['min_quantity'],
-            'created_at': now,
-          },
-          conflictAlgorithm: desktop.ConflictAlgorithm.ignore,
-        );
-      } else {
-        await db.insert(
-          'materials',
-          {
-            'name': material['name'],
-            'unit': material['unit'],
-            'quantity': material['quantity'],
-            'min_quantity': material['min_quantity'],
-            'created_at': now,
-          },
-          conflictAlgorithm: mobile.ConflictAlgorithm.ignore,
-        );
+      try {
+        if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+          await db.insert(
+            'materials',
+            {
+              'name': material['name'],
+              'unit': material['unit'],
+              'quantity': material['quantity'],
+              'min_quantity': material['min_quantity'],
+              'created_at': now,
+            },
+            conflictAlgorithm: desktop.ConflictAlgorithm.ignore,
+          );
+        } else {
+          await db.insert(
+            'materials',
+            {
+              'name': material['name'],
+              'unit': material['unit'],
+              'quantity': material['quantity'],
+              'min_quantity': material['min_quantity'],
+              'created_at': now,
+            },
+            conflictAlgorithm: mobile.ConflictAlgorithm.ignore,
+          );
+        }
+      } catch (e) {
+        // Ignorovať chyby pri vkladaní - možno už existujú
+        print('Warning: Failed to insert material ${material['name']}: $e');
       }
     }
 
@@ -339,26 +350,31 @@ class DatabaseHelper {
     ];
 
     for (var product in defaultProducts) {
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        await db.insert(
-          'products',
-          {
-            'name': product['name'],
-            'quantity': product['quantity'],
-            'created_at': now,
-          },
-          conflictAlgorithm: desktop.ConflictAlgorithm.ignore,
-        );
-      } else {
-        await db.insert(
-          'products',
-          {
-            'name': product['name'],
-            'quantity': product['quantity'],
-            'created_at': now,
-          },
-          conflictAlgorithm: mobile.ConflictAlgorithm.ignore,
-        );
+      try {
+        if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+          await db.insert(
+            'products',
+            {
+              'name': product['name'],
+              'quantity': product['quantity'],
+              'created_at': now,
+            },
+            conflictAlgorithm: desktop.ConflictAlgorithm.ignore,
+          );
+        } else {
+          await db.insert(
+            'products',
+            {
+              'name': product['name'],
+              'quantity': product['quantity'],
+              'created_at': now,
+            },
+            conflictAlgorithm: mobile.ConflictAlgorithm.ignore,
+          );
+        }
+      } catch (e) {
+        // Ignorovať chyby pri vkladaní - možno už existujú
+        print('Warning: Failed to insert product ${product['name']}: $e');
       }
     }
   }
@@ -392,28 +408,32 @@ class DatabaseHelper {
       for (var item in dlazbaRecipe) {
         final materialId = materialMap[item['material'] as String];
         if (materialId != null) {
-          if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-            await db.insert(
-              'recipes',
-              {
-                'product_id': dlazbaId,
-                'material_id': materialId,
-                'quantity_per_unit': item['quantity'] as double,
-                'unit': item['unit'] as String,
-              },
-              conflictAlgorithm: desktop.ConflictAlgorithm.ignore,
-            );
-          } else {
-            await db.insert(
-              'recipes',
-              {
-                'product_id': dlazbaId,
-                'material_id': materialId,
-                'quantity_per_unit': item['quantity'] as double,
-                'unit': item['unit'] as String,
-              },
-              conflictAlgorithm: mobile.ConflictAlgorithm.ignore,
-            );
+          try {
+            if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+              await db.insert(
+                'recipes',
+                {
+                  'product_id': dlazbaId,
+                  'material_id': materialId,
+                  'quantity_per_unit': item['quantity'] as double,
+                  'unit': item['unit'] as String,
+                },
+                conflictAlgorithm: desktop.ConflictAlgorithm.ignore,
+              );
+            } else {
+              await db.insert(
+                'recipes',
+                {
+                  'product_id': dlazbaId,
+                  'material_id': materialId,
+                  'quantity_per_unit': item['quantity'] as double,
+                  'unit': item['unit'] as String,
+                },
+                conflictAlgorithm: mobile.ConflictAlgorithm.ignore,
+              );
+            }
+          } catch (e) {
+            print('Warning: Failed to insert recipe: $e');
           }
         }
       }
@@ -433,28 +453,32 @@ class DatabaseHelper {
       for (var item in tvarniceRecipe) {
         final materialId = materialMap[item['material'] as String];
         if (materialId != null) {
-          if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-            await db.insert(
-              'recipes',
-              {
-                'product_id': tvarniceId,
-                'material_id': materialId,
-                'quantity_per_unit': item['quantity'] as double,
-                'unit': item['unit'] as String,
-              },
-              conflictAlgorithm: desktop.ConflictAlgorithm.ignore,
-            );
-          } else {
-            await db.insert(
-              'recipes',
-              {
-                'product_id': tvarniceId,
-                'material_id': materialId,
-                'quantity_per_unit': item['quantity'] as double,
-                'unit': item['unit'] as String,
-              },
-              conflictAlgorithm: mobile.ConflictAlgorithm.ignore,
-            );
+          try {
+            if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+              await db.insert(
+                'recipes',
+                {
+                  'product_id': tvarniceId,
+                  'material_id': materialId,
+                  'quantity_per_unit': item['quantity'] as double,
+                  'unit': item['unit'] as String,
+                },
+                conflictAlgorithm: desktop.ConflictAlgorithm.ignore,
+              );
+            } else {
+              await db.insert(
+                'recipes',
+                {
+                  'product_id': tvarniceId,
+                  'material_id': materialId,
+                  'quantity_per_unit': item['quantity'] as double,
+                  'unit': item['unit'] as String,
+                },
+                conflictAlgorithm: mobile.ConflictAlgorithm.ignore,
+              );
+            }
+          } catch (e) {
+            print('Warning: Failed to insert recipe: $e');
           }
         }
       }

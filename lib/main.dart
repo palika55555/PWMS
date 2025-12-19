@@ -11,11 +11,24 @@ import 'package:universal_html/html.dart' as html;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Inicializácia databázy
-  await DatabaseHelper.instance.database;
+  // Inicializácia databázy (preskočiť na web - nie je potrebná pre production details view)
+  if (!kIsWeb) {
+    try {
+      await DatabaseHelper.instance.database;
+    } catch (e) {
+      print('Error: Database initialization failed: $e');
+      rethrow; // Na desktop/mobile musí databáza fungovať
+    }
+  } else {
+    print('Skipping database initialization on web - not needed for production details view');
+  }
   
   // Inicializácia lokalizácie pre formátovanie dátumov
-  await initializeDateFormatting('sk_SK', null);
+  try {
+    await initializeDateFormatting('sk_SK', null);
+  } catch (e) {
+    print('Warning: Failed to initialize date formatting: $e');
+  }
   
   // Nastavenie default locale
   Intl.defaultLocale = 'sk_SK';
