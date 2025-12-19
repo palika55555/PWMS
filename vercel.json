@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "",
+  "buildCommand": "echo 'No build needed - using pre-built files'",
   "outputDirectory": "build/web",
   "rewrites": [
     {
