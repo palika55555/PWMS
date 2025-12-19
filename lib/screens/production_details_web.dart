@@ -25,12 +25,16 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
   @override
   void initState() {
     super.initState();
-    _loadQualityStatuses();
+    // Načítať kvalitu asynchrónne po tom, ako sa widget mountne
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadQualityStatuses();
+    });
   }
 
   Future<void> _loadQualityStatuses() async {
-    if (!kIsWeb || widget.productionData == null) return;
+    if (!kIsWeb || widget.productionData == null || !mounted) return;
 
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -38,44 +42,66 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
 
     try {
       final batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
+      if (batchNumbers.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
       final baseUrl = html.window.location.origin;
       
-      // Načítať kvalitu pre každú šaržu
+      // Načítať kvalitu pre každú šaržu (s timeoutom)
       for (var batchNum in batchNumbers) {
-        if (batchNum == null) continue;
+        if (batchNum == null || !mounted) continue;
         
         try {
           final response = await http.get(
             Uri.parse('$baseUrl/api/quality?batchNumber=$batchNum'),
+          ).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              throw Exception('Request timeout');
+            },
           );
 
-          if (response.statusCode == 200) {
+          if (response.statusCode == 200 && mounted) {
             final data = jsonDecode(response.body);
             if (data['success'] == true && data['quality'] != null) {
-              setState(() {
-                _qualityStatuses[batchNum.toString()] = data['quality']['status'] ?? 'pending';
-                _qualityNotes[batchNum.toString()] = data['quality']['notes'];
-              });
+              if (mounted) {
+                setState(() {
+                  _qualityStatuses[batchNum.toString()] = data['quality']['status'] ?? 'pending';
+                  _qualityNotes[batchNum.toString()] = data['quality']['notes'];
+                });
+              }
             }
           }
         } catch (e) {
+          // Ignorovať chyby pri načítaní kvality - nie je kritické
           print('Error loading quality for $batchNum: $e');
         }
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Chyba pri načítaní stavu kvality: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Chyba pri načítaní stavu kvality: $e';
+        });
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _updateQualityStatus(String batchNumber, String status, {String? notes}) async {
-    if (!kIsWeb) return;
+    if (!kIsWeb || !mounted) return;
 
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -92,17 +118,22 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
           'notes': notes,
           'checkedBy': 'Web User', // V produkcii by to bolo z prihlásenia
         }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && mounted) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          setState(() {
-            _qualityStatuses[batchNumber] = status;
-            _qualityNotes[batchNumber] = notes;
-          });
-          
           if (mounted) {
+            setState(() {
+              _qualityStatuses[batchNumber] = status;
+              _qualityNotes[batchNumber] = notes;
+            });
+            
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Kvalita šarže $batchNumber bola aktualizovaná'),
@@ -112,14 +143,14 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
           }
         }
       } else {
-        throw Exception('Failed to update quality: ${response.body}');
+        throw Exception('Failed to update quality: ${response.statusCode}');
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Chyba pri aktualizácii kvality: $e';
-      });
-      
       if (mounted) {
+        setState(() {
+          _errorMessage = 'Chyba pri aktualizácii kvality: $e';
+        });
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Chyba: $e'),
@@ -128,9 +159,11 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
         );
       }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

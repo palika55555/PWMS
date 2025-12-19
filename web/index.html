@@ -43,17 +43,29 @@
       if (loading) {
         setTimeout(function() {
           loading.style.display = 'none';
-        }, 1000);
+        }, 2000);
       }
     });
     
-    // Error handling
+    // Error handling - len logovať, neprerušovať aplikáciu
     window.addEventListener('error', function(e) {
-      console.error('Global error:', e.error);
-      const loading = document.getElementById('loading');
-      if (loading) {
-        loading.innerHTML = '<div style="text-align: center; padding: 20px;"><h2>Chyba pri načítaní aplikácie</h2><p>Skúste obnoviť stránku</p></div>';
+      // Ignorovať chyby z externých skriptov alebo obrázkov
+      if (e.filename && !e.filename.includes('main.dart.js') && !e.filename.includes('flutter')) {
+        return;
       }
+      
+      // Logovať len kritické chyby
+      if (e.error && e.error.toString().includes('Error')) {
+        console.warn('Application error (non-critical):', e.error);
+      }
+      
+      // Nezobrazovať error screen - aplikácia sa môže načítať aj s menšími chybami
+    });
+    
+    // Unhandled promise rejection handling
+    window.addEventListener('unhandledrejection', function(e) {
+      console.warn('Unhandled promise rejection (non-critical):', e.reason);
+      e.preventDefault(); // Zabrániť zobrazeniu v konzole
     });
   </script>
   

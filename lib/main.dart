@@ -6,34 +6,51 @@ import 'screens/home_screen.dart';
 import 'screens/production_details_web.dart';
 import 'database/database_helper.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:universal_html/html.dart' as html;
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  // Inicializácia databázy (preskočiť na web - nie je potrebná pre production details view)
-  if (!kIsWeb) {
-    try {
-      await DatabaseHelper.instance.database;
-    } catch (e) {
-      print('Error: Database initialization failed: $e');
-      rethrow; // Na desktop/mobile musí databáza fungovať
+  // Error handling wrapper
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    // Inicializácia databázy (preskočiť na web - nie je potrebná pre production details view)
+    if (!kIsWeb) {
+      try {
+        await DatabaseHelper.instance.database;
+      } catch (e) {
+        print('Error: Database initialization failed: $e');
+        throw e; // Na desktop/mobile musí databáza fungovať
+      }
+    } else {
+      print('Skipping database initialization on web - not needed for production details view');
     }
-  } else {
-    print('Skipping database initialization on web - not needed for production details view');
-  }
-  
-  // Inicializácia lokalizácie pre formátovanie dátumov
-  try {
-    await initializeDateFormatting('sk_SK', null);
-  } catch (e) {
-    print('Warning: Failed to initialize date formatting: $e');
-  }
-  
-  // Nastavenie default locale
-  Intl.defaultLocale = 'sk_SK';
-  
-  runApp(const MyApp());
+    
+    // Inicializácia lokalizácie pre formátovanie dátumov
+    try {
+      await initializeDateFormatting('sk_SK', null);
+    } catch (e) {
+      print('Warning: Failed to initialize date formatting: $e');
+      // Pokračovať aj keď zlyhá - nie je kritické
+    }
+    
+    // Nastavenie default locale
+    try {
+      Intl.defaultLocale = 'sk_SK';
+    } catch (e) {
+      print('Warning: Failed to set locale: $e');
+    }
+    
+    runApp(const MyApp());
+  }, (error, stack) {
+    // Global error handler
+    print('Uncaught error in main: $error');
+    print('Stack trace: $stack');
+    // Na web pokračovať - aplikácia sa môže načítať aj s chybami
+    if (!kIsWeb) {
+      throw error;
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {
