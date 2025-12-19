@@ -1,7 +1,9 @@
 #!/bin/bash
 # Install Flutter for Vercel build
 
+# Don't exit on error immediately - log errors first
 set -e
+set -o pipefail
 
 echo "=== Installing Flutter SDK ==="
 
@@ -34,9 +36,19 @@ FLUTTER_VERSION="3.24.3"
 FLUTTER_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 
 echo "Downloading Flutter ${FLUTTER_VERSION} from ${FLUTTER_URL}..."
-curl -L "$FLUTTER_URL" -o flutter.tar.xz
-tar xf flutter.tar.xz
-rm flutter.tar.xz
+if ! curl -L "$FLUTTER_URL" -o flutter.tar.xz; then
+    echo "ERROR: Failed to download Flutter"
+    exit 1
+fi
+
+echo "Extracting Flutter..."
+if ! tar xf flutter.tar.xz; then
+    echo "ERROR: Failed to extract Flutter"
+    exit 1
+fi
+
+rm -f flutter.tar.xz
+echo "Flutter extracted successfully"
 
 export PATH="$PATH:`pwd`/flutter/bin"
 
@@ -60,7 +72,10 @@ flutter config --no-analytics
 echo "Skipping flutter doctor (not needed for web builds)..."
 
 echo "Getting Flutter dependencies..."
-flutter pub get
+if ! flutter pub get; then
+    echo "ERROR: Failed to get Flutter dependencies"
+    exit 1
+fi
 
-echo "=== Flutter installation completed! ==="
+echo "=== Flutter installation completed successfully! ==="
 

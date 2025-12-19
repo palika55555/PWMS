@@ -2,7 +2,7 @@
   "name": "pwms",
   "version": "1.0.0",
   "scripts": {
-    "install": "chmod +x install_flutter.sh && bash install_flutter.sh",
+    "install-flutter": "chmod +x install_flutter.sh && bash install_flutter.sh",
     "build": "chmod +x build_vercel.sh && bash build_vercel.sh"
   }
 }

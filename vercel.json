@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
-  "installCommand": "npm run install",
+  "buildCommand": "chmod +x build_vercel.sh && bash build_vercel.sh",
+  "installCommand": "chmod +x install_flutter.sh && bash install_flutter.sh",
   "outputDirectory": "build/web",
   "framework": null,
   "rewrites": [
