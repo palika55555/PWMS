@@ -5,6 +5,7 @@ import '../models/production.dart';
 import '../models/production_type.dart';
 import '../services/api_service.dart';
 import 'production_form_screen.dart';
+import 'recipes_screen.dart';
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -89,6 +90,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Výroba'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Späť',
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -111,6 +117,23 @@ class _ProductionScreenState extends State<ProductionScreen> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const RecipesScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.restaurant_menu),
+                        label: const Text('Recepty'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: () async {
                           await Navigator.push(

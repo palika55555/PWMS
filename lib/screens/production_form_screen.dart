@@ -14,14 +14,18 @@ class ProductionFormScreen extends StatefulWidget {
 class _ProductionFormScreenState extends State<ProductionFormScreen> {
   final _formKey = GlobalKey<FormState>();
   ProductionType? _selectedType;
+  dynamic _selectedRecipe;
   double _quantity = 0;
+  final _quantityController = TextEditingController();
   final _notesController = TextEditingController();
   DateTime _productionDate = DateTime.now();
 
   List<ProductionType> _productionTypes = [];
   List<material_model.Material> _materials = [];
+  List<dynamic> _recipes = [];
   List<Map<String, dynamic>> _selectedMaterials = [];
   bool _isLoading = true;
+  bool _useRecipe = false;
 
   @override
   void initState() {
@@ -47,6 +51,50 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Chyba pri načítaní dát: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadRecipes() async {
+    if (_selectedType == null) return;
+    
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final recipes = await apiService.getRecipesByProductionType(_selectedType!.id);
+      setState(() {
+        _recipes = recipes;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chyba pri načítaní receptov: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _calculateMaterialsFromRecipe() async {
+    if (_selectedRecipe == null || _quantity <= 0) {
+      setState(() {
+        _selectedMaterials = [];
+      });
+      return;
+    }
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final result = await apiService.calculateRecipeMaterials(
+        _selectedRecipe['id'],
+        _quantity,
+      );
+      setState(() {
+        _selectedMaterials = List<Map<String, dynamic>>.from(result['materials']);
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chyba pri výpočte materiálov: $e')),
         );
       }
     }
@@ -87,6 +135,12 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     if (_selectedType == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vyberte typ výroby')),
+      );
+      return;
+    }
+    if (_selectedMaterials.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pridajte materiály alebo použite recept')),
       );
       return;
     }
@@ -141,7 +195,15 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                       );
                     }).toList(),
                     onChanged: (value) {
-                      setState(() => _selectedType = value);
+                      setState(() {
+                        _selectedType = value;
+                        _selectedRecipe = null;
+                        _selectedMaterials = [];
+                        _useRecipe = false;
+                      });
+                      if (value != null) {
+                        _loadRecipes();
+                      }
                     },
                     validator: (value) {
                       if (value == null) return 'Vyberte typ výroby';
@@ -149,7 +211,49 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
+                  CheckboxListTile(
+                    title: const Text('Použiť recept'),
+                    value: _useRecipe,
+                    onChanged: (value) {
+                      setState(() {
+                        _useRecipe = value ?? false;
+                        if (!_useRecipe) {
+                          _selectedRecipe = null;
+                          _selectedMaterials = [];
+                        }
+                      });
+                      if (_useRecipe && _selectedType != null) {
+                        _loadRecipes();
+                      }
+                    },
+                  ),
+                  if (_useRecipe && _selectedType != null) ...[
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<dynamic>(
+                      value: _selectedRecipe,
+                      decoration: const InputDecoration(
+                        labelText: 'Recept',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _recipes.map((recipe) {
+                        return DropdownMenuItem(
+                          value: recipe,
+                          child: Text(recipe['name'] ?? 'Neznámy recept'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedRecipe = value;
+                        });
+                        if (value != null && _quantity > 0) {
+                          _calculateMaterialsFromRecipe();
+                        }
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 16),
                   TextFormField(
+                    controller: _quantityController,
                     decoration: const InputDecoration(
                       labelText: 'Množstvo',
                       border: OutlineInputBorder(),
@@ -163,10 +267,17 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                       if (qty == null || qty <= 0) {
                         return 'Množstvo musí byť kladné číslo';
                       }
+                      _quantity = qty;
                       return null;
                     },
-                    onSaved: (value) {
-                      _quantity = double.parse(value!);
+                    onChanged: (value) {
+                      final qty = double.tryParse(value);
+                      if (qty != null && qty > 0) {
+                        _quantity = qty;
+                        if (_useRecipe && _selectedRecipe != null) {
+                          _calculateMaterialsFromRecipe();
+                        }
+                      }
                     },
                   ),
                   const SizedBox(height: 16),
@@ -212,18 +323,20 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                     maxLines: 3,
                   ),
                   const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _addMaterial,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Pridať materiál'),
+                  if (!_useRecipe) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _addMaterial,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Pridať materiál'),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   if (_selectedMaterials.isNotEmpty) ...[
                     const Text(
                       'Použité materiály:',
@@ -236,14 +349,19 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                       final materialName = _materials
                           .firstWhere((m) => m.id == material['materialId'] as String)
                           .name;
+                      final materialUnit = _materials
+                          .firstWhere((m) => m.id == material['materialId'] as String)
+                          .unit;
                       return Card(
                         child: ListTile(
                           title: Text(materialName),
-                          subtitle: Text('${material['quantity']}'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => _removeMaterial(index),
-                          ),
+                          subtitle: Text('${material['quantity']} $materialUnit'),
+                          trailing: !_useRecipe
+                              ? IconButton(
+                                  icon: const Icon(Icons.delete),
+                                  onPressed: () => _removeMaterial(index),
+                                )
+                              : null,
                         ),
                       );
                     }),
@@ -264,6 +382,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
 
   @override
   void dispose() {
+    _quantityController.dispose();
     _notesController.dispose();
     super.dispose();
   }

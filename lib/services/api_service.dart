@@ -5,8 +5,11 @@ import '../models/material.dart';
 import '../models/warehouse.dart';
 import '../models/production_type.dart';
 import '../models/production.dart';
+import '../models/batch.dart';
+import '../models/quality_control.dart';
+import '../models/production_plan.dart';
+import '../models/notification.dart';
 import '../config/api_config.dart';
-import 'app_state.dart';
 
 class ApiService extends ChangeNotifier {
   static const String baseUrl = ApiConfig.baseUrl;
@@ -190,6 +193,117 @@ class ApiService extends ChangeNotifier {
     }
   }
 
+  // Recipes
+  Future<List<dynamic>> getRecipes() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/recipes'));
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      throw Exception('Failed to load recipes');
+    } catch (e) {
+      debugPrint('Error loading recipes: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<dynamic>> getRecipesByProductionType(String productionTypeId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/recipes/type/$productionTypeId')
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      throw Exception('Failed to load recipes');
+    } catch (e) {
+      debugPrint('Error loading recipes: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> calculateRecipeMaterials(String recipeId, double quantity) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/recipes/$recipeId/calculate'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'quantity': quantity}),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      throw Exception('Failed to calculate materials');
+    } catch (e) {
+      debugPrint('Error calculating materials: $e');
+      rethrow;
+    }
+  }
+
+  Future<dynamic> createRecipe({
+    required String productionTypeId,
+    required String name,
+    String? description,
+    required List<Map<String, dynamic>> materials,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/recipes'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'productionTypeId': productionTypeId,
+          'name': name,
+          'description': description,
+          'materials': materials,
+        }),
+      );
+      if (response.statusCode == 201) {
+        return json.decode(response.body);
+      }
+      throw Exception('Failed to create recipe');
+    } catch (e) {
+      debugPrint('Error creating recipe: $e');
+      rethrow;
+    }
+  }
+
+  Future<dynamic> updateRecipe({
+    required String id,
+    required String name,
+    String? description,
+    required List<Map<String, dynamic>> materials,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/recipes/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'name': name,
+          'description': description,
+          'materials': materials,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      throw Exception('Failed to update recipe');
+    } catch (e) {
+      debugPrint('Error updating recipe: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteRecipe(String id) async {
+    try {
+      final response = await http.delete(Uri.parse('$baseUrl/api/recipes/$id'));
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete recipe');
+      }
+    } catch (e) {
+      debugPrint('Error deleting recipe: $e');
+      rethrow;
+    }
+  }
+
   // Sync
   Future<Map<String, dynamic>> getSyncStatus() async {
     try {
@@ -213,6 +327,214 @@ class ApiService extends ChangeNotifier {
       throw Exception('Failed to sync');
     } catch (e) {
       debugPrint('Error syncing: $e');
+      rethrow;
+    }
+  }
+
+  // Batches
+  Future<List<Batch>> getBatches() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/batches'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Batch.fromJson(json)).toList();
+      }
+      throw Exception('Failed to load batches');
+    } catch (e) {
+      debugPrint('Error loading batches: $e');
+      rethrow;
+    }
+  }
+
+  Future<dynamic> createBatch({
+    required String productionId,
+    required String batchNumber,
+    required double quantity,
+    String? qrCode,
+    String? warehouseLocation,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/batches'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'production_id': productionId,
+          'batch_number': batchNumber,
+          'quantity': quantity,
+          'qr_code': qrCode,
+          'warehouse_location': warehouseLocation,
+        }),
+      );
+      if (response.statusCode == 201) {
+        return json.decode(response.body);
+      }
+      throw Exception('Failed to create batch');
+    } catch (e) {
+      debugPrint('Error creating batch: $e');
+      rethrow;
+    }
+  }
+
+  // Quality Control
+  Future<List<QualityControl>> getQualityTests(String batchId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/quality-control/batch/$batchId'),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => QualityControl.fromJson(json)).toList();
+      }
+      throw Exception('Failed to load quality tests');
+    } catch (e) {
+      debugPrint('Error loading quality tests: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> createQualityTest({
+    required String batchId,
+    required String testType,
+    required String testName,
+    double? resultValue,
+    String? resultText,
+    required bool passed,
+    String? testedBy,
+    String? notes,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/quality-control'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'batch_id': batchId,
+          'test_type': testType,
+          'test_name': testName,
+          'result_value': resultValue,
+          'result_text': resultText,
+          'passed': passed,
+          'tested_by': testedBy,
+          'notes': notes,
+        }),
+      );
+      if (response.statusCode != 201) {
+        throw Exception('Failed to create quality test');
+      }
+    } catch (e) {
+      debugPrint('Error creating quality test: $e');
+      rethrow;
+    }
+  }
+
+  // Production Plans
+  Future<List<ProductionPlan>> getProductionPlans() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/production-plans'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => ProductionPlan.fromJson(json)).toList();
+      }
+      throw Exception('Failed to load production plans');
+    } catch (e) {
+      debugPrint('Error loading production plans: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> createProductionPlan({
+    required String productionTypeId,
+    required double plannedQuantity,
+    required DateTime plannedDate,
+    String priority = 'normal',
+    String? assignedRecipeId,
+    String? notes,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/production-plans'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'production_type_id': productionTypeId,
+          'planned_quantity': plannedQuantity,
+          'planned_date': plannedDate.toIso8601String().split('T')[0],
+          'priority': priority,
+          'assigned_recipe_id': assignedRecipeId,
+          'notes': notes,
+        }),
+      );
+      if (response.statusCode != 201) {
+        throw Exception('Failed to create production plan');
+      }
+    } catch (e) {
+      debugPrint('Error creating production plan: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteProductionPlan(String id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/api/production-plans/$id'),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete production plan');
+      }
+    } catch (e) {
+      debugPrint('Error deleting production plan: $e');
+      rethrow;
+    }
+  }
+
+  // Reports
+  Future<Map<String, dynamic>> getReport({
+    required String period,
+    required DateTime date,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/reports')
+            .replace(queryParameters: {
+          'period': period,
+          'date': date.toIso8601String().split('T')[0],
+        }),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      throw Exception('Failed to get report');
+    } catch (e) {
+      debugPrint('Error getting report: $e');
+      rethrow;
+    }
+  }
+
+  // Notifications
+  Future<List<Notification>> getNotifications() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/notifications'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Notification.fromJson(json)).toList();
+      }
+      throw Exception('Failed to load notifications');
+    } catch (e) {
+      debugPrint('Error loading notifications: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> markNotificationAsRead(String id) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/notifications/$id/read'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'read': true}),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Failed to mark notification as read');
+      }
+    } catch (e) {
+      debugPrint('Error marking notification as read: $e');
       rethrow;
     }
   }

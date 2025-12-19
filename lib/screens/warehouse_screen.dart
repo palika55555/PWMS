@@ -45,6 +45,11 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sklad'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Späť',
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

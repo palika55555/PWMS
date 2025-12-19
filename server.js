@@ -8,7 +8,13 @@ import { SyncService } from './services/sync-service.js';
 import materialsRoutes from './routes/materials.js';
 import warehouseRoutes from './routes/warehouse.js';
 import productionRoutes from './routes/production.js';
+import recipesRoutes from './routes/recipes.js';
 import syncRoutes from './routes/sync.js';
+import batchesRoutes from './routes/batches.js';
+import qualityControlRoutes from './routes/quality-control.js';
+import productionPlansRoutes from './routes/production-plans.js';
+import reportsRoutes from './routes/reports.js';
+import notificationsRoutes from './routes/notifications.js';
 
 dotenv.config();
 
@@ -46,7 +52,13 @@ app.get('/', (req, res) => {
       materials: '/api/materials',
       warehouse: '/api/warehouse',
       production: '/api/production',
-      sync: '/api/sync'
+      recipes: '/api/recipes',
+      sync: '/api/sync',
+      batches: '/api/batches',
+      qualityControl: '/api/quality-control',
+      productionPlans: '/api/production-plans',
+      reports: '/api/reports',
+      notifications: '/api/notifications'
     }
   });
 });
@@ -54,7 +66,13 @@ app.get('/', (req, res) => {
 app.use('/api/materials', materialsRoutes);
 app.use('/api/warehouse', warehouseRoutes);
 app.use('/api/production', productionRoutes);
+app.use('/api/recipes', recipesRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/batches', batchesRoutes);
+app.use('/api/quality-control', qualityControlRoutes);
+app.use('/api/production-plans', productionPlansRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Auto-sync functionality
 if (process.env.AUTO_SYNC === 'true') {

@@ -85,6 +85,12 @@ export class SyncService {
       case 'production_materials':
         await this.syncProductionMaterial(client, item.operation, data);
         break;
+      case 'recipes':
+        await this.syncRecipe(client, item.operation, data);
+        break;
+      case 'recipe_materials':
+        await this.syncRecipeMaterial(client, item.operation, data);
+        break;
       default:
         throw new Error(`Unknown table: ${item.table_name}`);
     }
@@ -172,6 +178,45 @@ export class SyncService {
       `, [data.id, data.productionId, data.materialId, data.quantity]);
     } else if (operation === 'DELETE') {
       await client.query('DELETE FROM production_materials WHERE id = $1', [data.id]);
+    }
+  }
+  
+  static async syncRecipe(client, operation, data) {
+    if (operation === 'INSERT' || operation === 'UPDATE') {
+      await client.query(`
+        INSERT INTO recipes (id, production_type_id, name, description, synced)
+        VALUES ($1, $2, $3, $4, 1)
+        ON CONFLICT (id) 
+        DO UPDATE SET name = $3, description = $4, synced = 1
+      `, [data.id, data.productionTypeId, data.name, data.description || null]);
+      
+      // Sync recipe materials
+      if (data.materials && Array.isArray(data.materials)) {
+        for (const material of data.materials) {
+          await client.query(`
+            INSERT INTO recipe_materials (id, recipe_id, material_id, quantity_per_unit, synced)
+            VALUES ($1, $2, $3, $4, 1)
+            ON CONFLICT (id) 
+            DO UPDATE SET quantity_per_unit = $4, synced = 1
+          `, [material.id || uuidv4(), data.id, material.materialId, material.quantityPerUnit]);
+        }
+      }
+    } else if (operation === 'DELETE') {
+      await client.query('DELETE FROM recipe_materials WHERE recipe_id = $1', [data.id]);
+      await client.query('DELETE FROM recipes WHERE id = $1', [data.id]);
+    }
+  }
+  
+  static async syncRecipeMaterial(client, operation, data) {
+    if (operation === 'INSERT' || operation === 'UPDATE') {
+      await client.query(`
+        INSERT INTO recipe_materials (id, recipe_id, material_id, quantity_per_unit, synced)
+        VALUES ($1, $2, $3, $4, 1)
+        ON CONFLICT (id) 
+        DO UPDATE SET quantity_per_unit = $4, synced = 1
+      `, [data.id, data.recipeId, data.materialId, data.quantityPerUnit]);
+    } else if (operation === 'DELETE') {
+      await client.query('DELETE FROM recipe_materials WHERE id = $1', [data.id]);
     }
   }
   

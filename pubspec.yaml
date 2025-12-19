@@ -31,6 +31,7 @@ dependencies:
   
   # Date/Time
   intl: ^0.18.1
+  table_calendar: ^3.0.9
   
   # Utilities
   uuid: ^4.1.0
