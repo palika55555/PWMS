@@ -26,6 +26,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
   List<Warehouse> _warehouse = [];
   List<dynamic> _recipes = [];
   List<Map<String, dynamic>> _selectedMaterials = [];
+  List<Map<String, dynamic>> _recipeMaterials = []; // Materiály z receptúry (na jednotku)
   bool _isLoading = true;
   bool _useRecipe = false;
 
@@ -91,6 +92,21 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
           SnackBar(content: Text('Chyba pri načítaní receptov: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _loadRecipeMaterials(String recipeId) async {
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final recipe = await apiService.getRecipeById(recipeId);
+      
+      if (mounted && recipe['materials'] != null) {
+        setState(() {
+          _recipeMaterials = List<Map<String, dynamic>>.from(recipe['materials']);
+        });
+      }
+    } catch (e) {
+      debugPrint('Chyba pri načítaní materiálov z receptúry: $e');
     }
   }
 
@@ -231,7 +247,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     final missingMaterials = <String>[];
     for (final material in _selectedMaterials) {
       final materialId = material['materialId'] as String;
-      final requiredQuantity = material['quantity'] as double;
+      final requiredQuantity = (material['quantity'] as num).toDouble();
       if (!_hasEnoughMaterial(materialId, requiredQuantity)) {
         final materialName = _materials
             .firstWhere((m) => m.id == materialId)
@@ -379,19 +395,115 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                           child: Text(recipe['name'] ?? 'Neznámy recept'),
                         );
                       }).toList(),
-                    onChanged: (value) {
+                    onChanged: (value) async {
                       setState(() {
                         _selectedRecipe = value;
+                        _recipeMaterials = [];
+                        _selectedMaterials = [];
                       });
-                      if (value != null && _quantity > 0) {
-                        _calculateMaterialsFromRecipe();
-                      } else if (value == null) {
-                        setState(() {
-                          _selectedMaterials = [];
-                        });
+                      if (value != null) {
+                        // Načítame materiály z receptúry
+                        await _loadRecipeMaterials(value['id']);
+                        if (_quantity > 0) {
+                          _calculateMaterialsFromRecipe();
+                        }
                       }
                     },
                     ),
+                    // Zobrazenie materiálov z receptúry (pred výpočtom)
+                    if (_useRecipe && _selectedRecipe != null && _recipeMaterials.isNotEmpty && _quantity == 0) ...[
+                      const SizedBox(height: 16),
+                      Card(
+                        color: Colors.blue.shade50,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.info_outline, color: Colors.blue.shade700),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Materiály v receptúre (na 1 jednotku):',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ..._recipeMaterials.map((recipeMat) {
+                                final materialId = recipeMat['material_id'] as String? ?? recipeMat['materialId'] as String? ?? '';
+                                final quantityPerUnit = (recipeMat['quantity_per_unit'] as num?)?.toDouble() ?? 
+                                                       (recipeMat['quantityPerUnit'] as num?)?.toDouble() ?? 0.0;
+                                final material = _materials.firstWhere(
+                                  (m) => m.id == materialId,
+                                  orElse: () => material_model.Material(
+                                    id: materialId,
+                                    name: recipeMat['material_name'] as String? ?? 'Neznámy',
+                                    unit: recipeMat['unit'] as String? ?? '',
+                                  ),
+                                );
+                                
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '${material.name}:',
+                                          style: const TextStyle(fontSize: 14),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${quantityPerUnit.toStringAsFixed(2)} ${material.unit}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Po zadaní množstva sa automaticky vypočítajú potrebné množstvá materiálov.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue.shade600,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    // Zobrazenie vypočítaných materiálov (po zadaní množstva)
+                    if (_useRecipe && _selectedRecipe != null && _recipeMaterials.isNotEmpty && _quantity > 0 && _selectedMaterials.isEmpty) ...[
+                      const SizedBox(height: 16),
+                      Card(
+                        color: Colors.orange.shade50,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              const CircularProgressIndicator(strokeWidth: 2),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Vypočítavam materiály pre ${_quantity.toStringAsFixed(2)} jednotiek...',
+                                  style: TextStyle(color: Colors.orange.shade700),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                   const SizedBox(height: 16),
                   TextFormField(
@@ -514,7 +626,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                       final index = entry.key;
                       final material = entry.value;
                       final materialId = material['materialId'] as String;
-                      final requiredQuantity = material['quantity'] as double;
+                      final requiredQuantity = (material['quantity'] as num).toDouble();
                       final materialName = _materials
                           .firstWhere((m) => m.id == materialId)
                           .name;

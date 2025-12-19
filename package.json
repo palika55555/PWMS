@@ -11,9 +11,10 @@
     "migrate:remote": "node scripts/migrate-remote.js",
     "sync": "node scripts/sync-to-remote.js",
     "seed:recipes": "node scripts/seed-default-recipes.js",
+    "seed:recipes:api": "node scripts/seed-recipes-api.js",
     "seed:materials": "node scripts/seed-materials.js",
     "seed:materials:api": "node scripts/seed-materials-api.js",
-    "seed:all": "node scripts/seed-materials.js && node scripts/seed-default-recipes.js"
+    "seed:all": "node scripts/seed-materials-api.js && node scripts/seed-recipes-api.js"
   },
   "keywords": ["production", "warehouse", "concrete", "management"],
   "author": "",

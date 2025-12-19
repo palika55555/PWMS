@@ -15,7 +15,10 @@ const API_BASE_URL = process.env.RAILWAY_URL || process.env.API_BASE_URL || proc
 
 const DEFAULT_MATERIALS = [
   { name: 'Cement', unit: 'kg' },
-  { name: 'Štrk', unit: 'kg' },
+  { name: 'Štrk 0/4', unit: 'kg' }, // Jemný štrk, frakcia 0-4 mm
+  { name: 'Štrk 4/8', unit: 'kg' }, // Stredný štrk, frakcia 4-8 mm
+  { name: 'Štrk 8/16', unit: 'kg' }, // Hrubý štrk, frakcia 8-16 mm
+  { name: 'Štrk 16/32', unit: 'kg' }, // Veľmi hrubý štrk, frakcia 16-32 mm
   { name: 'Piesok', unit: 'kg' },
   { name: 'Voda', unit: 'l' },
   { name: 'Pigment', unit: 'kg' },

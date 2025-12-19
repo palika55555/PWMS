@@ -174,9 +174,22 @@ class _ProductionScreenState extends State<ProductionScreen> {
       
       // Convert alerts
       final alertsFormatted = alerts.map((alertData) {
+        material_model.Material material;
+        if (alertData['material'] is material_model.Material) {
+          material = alertData['material'] as material_model.Material;
+        } else if (alertData['material'] is Map) {
+          material = material_model.Material.fromJson(alertData['material'] as Map<String, dynamic>);
+        } else {
+          material = material_model.Material(
+            id: '',
+            name: 'Neznámy',
+            unit: '',
+          );
+        }
+        
         return Alert(
           type: alertData['type'] as String,
-          material: alertData['material'] as material_model.Material,
+          material: material,
           message: alertData['message'] as String,
         );
       }).toList();

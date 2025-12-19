@@ -15,7 +15,7 @@ const DEFAULT_RECIPES = {
     materials: [
       { name: 'Cement', quantityPerUnit: 18 }, // kg na m² (štandardný betón C20/25)
       { name: 'Piesok', quantityPerUnit: 55 }, // kg na m²
-      { name: 'Štrk', quantityPerUnit: 90 }, // kg na m² (frakcia 4/8 mm)
+      { name: 'Štrk 4/8', quantityPerUnit: 90 }, // kg na m² (frakcia 4-8 mm)
       { name: 'Voda', quantityPerUnit: 9 }, // l na m²
       { name: 'Pigment', quantityPerUnit: 0.5 }, // kg na m² (voliteľné)
     ]
@@ -26,8 +26,28 @@ const DEFAULT_RECIPES = {
     materials: [
       { name: 'Cement', quantityPerUnit: 14 }, // kg na m² (betón C16/20)
       { name: 'Piesok', quantityPerUnit: 65 }, // kg na m²
-      { name: 'Štrk', quantityPerUnit: 110 }, // kg na m² (frakcia 8/16 mm)
+      { name: 'Štrk 8/16', quantityPerUnit: 110 }, // kg na m² (frakcia 8-16 mm)
       { name: 'Voda', quantityPerUnit: 11 }, // l na m²
+    ]
+  },
+  tvárnice_hrubé: {
+    name: 'Receptúra - Tvárnice (hrubý štrk)',
+    description: 'Receptúra pre výrobu betónových tvárnic s hrubším štrkom (na 1 m²). Vhodné pre nosné tvárnice.',
+    materials: [
+      { name: 'Cement', quantityPerUnit: 16 }, // kg na m²
+      { name: 'Piesok', quantityPerUnit: 60 }, // kg na m²
+      { name: 'Štrk 16/32', quantityPerUnit: 120 }, // kg na m² (frakcia 16-32 mm)
+      { name: 'Voda', quantityPerUnit: 12 }, // l na m²
+    ]
+  },
+  tvárnice_jemné: {
+    name: 'Receptúra - Tvárnice (jemný štrk)',
+    description: 'Receptúra pre výrobu betónových tvárnic s jemnejším štrkom (na 1 m²). Vhodné pre dekoratívne tvárnice.',
+    materials: [
+      { name: 'Cement', quantityPerUnit: 15 }, // kg na m²
+      { name: 'Piesok', quantityPerUnit: 70 }, // kg na m²
+      { name: 'Štrk 4/8', quantityPerUnit: 100 }, // kg na m² (frakcia 4-8 mm)
+      { name: 'Voda', quantityPerUnit: 10 }, // l na m²
     ]
   }
 };
@@ -74,10 +94,13 @@ async function seedRecipes() {
 
         // Získame alebo vytvoríme materiály
         const materialsMap = {};
-        const materialNames = ['Cement', 'Štrk', 'Piesok', 'Voda', 'Pigment'];
+        const materialNames = ['Cement', 'Štrk 0/4', 'Štrk 4/8', 'Štrk 8/16', 'Štrk 16/32', 'Piesok', 'Voda', 'Pigment'];
         const materialUnits = {
           'Cement': 'kg',
-          'Štrk': 'kg',
+          'Štrk 0/4': 'kg',
+          'Štrk 4/8': 'kg',
+          'Štrk 8/16': 'kg',
+          'Štrk 16/32': 'kg',
           'Piesok': 'kg',
           'Voda': 'l',
           'Pigment': 'kg'
@@ -100,7 +123,15 @@ async function seedRecipes() {
 
         // Vytvoríme receptúry
         for (const [typeKey, recipeData] of Object.entries(DEFAULT_RECIPES)) {
-          const productionTypeId = typeKey === 'dlažba' ? dlažbaTypeId : tvárniceTypeId;
+          let productionTypeId;
+          if (typeKey === 'dlažba') {
+            productionTypeId = dlažbaTypeId;
+          } else if (typeKey.startsWith('tvárnice')) {
+            productionTypeId = tvárniceTypeId;
+          } else {
+            console.warn(`⚠️  Neznámy typ výroby pre receptúru: ${typeKey}`);
+            continue;
+          }
           
           // Skontrolujeme, či už existuje predvolená receptúra
           result = await client.query(
@@ -171,10 +202,13 @@ async function seedRecipes() {
 
       // Získame alebo vytvoríme materiály
       const materialsMap = {};
-      const materialNames = ['Cement', 'Štrk', 'Piesok', 'Voda', 'Pigment'];
+      const materialNames = ['Cement', 'Štrk 0/4', 'Štrk 4/8', 'Štrk 8/16', 'Štrk 16/32', 'Piesok', 'Voda', 'Pigment'];
       const materialUnits = {
         'Cement': 'kg',
-        'Štrk': 'kg',
+        'Štrk 0/4': 'kg',
+        'Štrk 4/8': 'kg',
+        'Štrk 8/16': 'kg',
+        'Štrk 16/32': 'kg',
         'Piesok': 'kg',
         'Voda': 'l',
         'Pigment': 'kg'
@@ -195,7 +229,15 @@ async function seedRecipes() {
 
       // Vytvoríme receptúry
       for (const [typeKey, recipeData] of Object.entries(DEFAULT_RECIPES)) {
-        const productionTypeId = typeKey === 'dlažba' ? dlažbaTypeId : tvárniceTypeId;
+        let productionTypeId;
+        if (typeKey === 'dlažba') {
+          productionTypeId = dlažbaTypeId;
+        } else if (typeKey.startsWith('tvárnice')) {
+          productionTypeId = tvárniceTypeId;
+        } else {
+          console.warn(`⚠️  Neznámy typ výroby pre receptúru: ${typeKey}`);
+          continue;
+        }
         
         // Skontrolujeme, či už existuje predvolená receptúra
         result = db.prepare("SELECT id FROM recipes WHERE production_type_id = ? AND name = ?")
