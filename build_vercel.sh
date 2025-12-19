@@ -30,6 +30,14 @@ flutter --version
 
 # Get dependencies (optimized - skip precompile)
 echo "Getting Flutter dependencies..."
+
+# Check if pub cache exists in /tmp (Vercel preserves /tmp)
+PUB_CACHE_DIR="/tmp/pub-cache"
+if [ -d "$PUB_CACHE_DIR" ]; then
+    export PUB_CACHE="$PUB_CACHE_DIR"
+    echo "Using cached pub cache from $PUB_CACHE_DIR"
+fi
+
 if [ -f "pubspec.lock" ]; then
     echo "pubspec.lock found, dependencies may be cached..."
 fi
@@ -41,6 +49,13 @@ if ! flutter pub get --no-example --no-precompile; then
         echo "ERROR: Failed to get Flutter dependencies"
         exit 1
     }
+fi
+
+# Cache pub cache for next build
+if [ -d "$HOME/.pub-cache" ]; then
+    mkdir -p "$PUB_CACHE_DIR"
+    cp -r "$HOME/.pub-cache"/* "$PUB_CACHE_DIR/" 2>/dev/null || true
+    echo "Pub cache saved to $PUB_CACHE_DIR for future builds"
 fi
 
 # Build for web (optimized - skip Skia for faster build)

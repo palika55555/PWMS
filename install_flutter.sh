@@ -12,10 +12,11 @@ git config --global user.name "Vercel Build" || true
 git config --global user.email "build@vercel.com" || true
 
 # Cache directory for Flutter SDK
-CACHE_DIR="$HOME/.cache/flutter"
+# Vercel preserves /tmp between builds, so use that for caching
+CACHE_DIR="/tmp/flutter-cache"
 FLUTTER_VERSION="3.38.5"
 
-# Check cache first (Vercel may preserve cache between builds)
+# Check cache first (Vercel preserves /tmp between builds)
 if [ -d "$CACHE_DIR/flutter" ] && [ -f "$CACHE_DIR/flutter/bin/flutter" ]; then
     echo "Using cached Flutter SDK from $CACHE_DIR..."
     cp -r "$CACHE_DIR/flutter" ./flutter
@@ -43,9 +44,10 @@ if [ -d "flutter" ] && [ -f "flutter/bin/flutter" ]; then
     flutter --version
     flutter config --no-analytics
     
-    # Cache for next build
+    # Cache for next build (Vercel preserves /tmp)
     mkdir -p "$CACHE_DIR"
     cp -r flutter "$CACHE_DIR/flutter" 2>/dev/null || true
+    echo "Flutter cached to $CACHE_DIR for future builds"
     
     exit 0
 fi
@@ -64,10 +66,10 @@ echo "Extracting Flutter..."
 tar xf flutter.tar.xz
 rm -f flutter.tar.xz
 
-# Cache Flutter for next build
+# Cache Flutter for next build (Vercel preserves /tmp between builds)
 mkdir -p "$CACHE_DIR"
 cp -r flutter "$CACHE_DIR/flutter" 2>/dev/null || true
-echo "Flutter cached for future builds"
+echo "Flutter cached to $CACHE_DIR for future builds"
 
 export PATH="$PATH:`pwd`/flutter/bin"
 
