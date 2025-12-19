@@ -18,10 +18,8 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -35,6 +33,23 @@ migrate_working_dir/
 !/build/web/
 !/build/web/**
 /coverage/
+
+# Flutter SDK (should not be committed)
+flutter/
+
+# Platform specific (not needed for web deployment)
+android/
+ios/
+windows/
+
+# Build artifacts that are not needed
+build/flutter_assets/
+build/native_assets/
+build/*.dill
+build/*.cache.dill
+build/*.track.dill
+build/76270b7e740e9f9bbc0939469ed1bd73/
+build/native_hooks/
 
 # Symbolication related
 app.*.symbols
