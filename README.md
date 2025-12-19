@@ -79,6 +79,40 @@ Aplikácia používa SQLite databázu, ktorá sa automaticky vytvorí pri prvom 
 6. Voliteľne pridajte poznámky
 7. Uložte výrobu - materiály sa automaticky odčítajú zo zásob
 
+## Nasadenie na Vercel
+
+Aplikácia je pripravená na nasadenie na Vercel. Existujú dva spôsoby:
+
+### Metóda 1: Automatický build na Vercel (odporúčané)
+
+1. Pushnite kód do Git repozitára (GitHub, GitLab, Bitbucket)
+2. Pripojte repozitár k Vercel projektu
+3. Vercel automaticky použije `vercel.json` konfiguráciu
+4. Build môže trvať 5-10 minút (inštalácia Flutter SDK)
+
+**Poznámka:** Ak build timeoutne, použite Metódu 2.
+
+### Metóda 2: Pre-built deployment (rýchlejšie)
+
+1. Lokálne zostavte aplikáciu:
+```bash
+flutter build web --release
+```
+
+2. Commitnite `build/web` priečinok do Git:
+```bash
+git add build/web
+git commit -m "Add pre-built web files"
+git push
+```
+
+3. Upravte `vercel.json` - zmeňte `buildCommand` na:
+```json
+"buildCommand": "echo 'Using pre-built files'"
+```
+
+4. Pushnite zmeny - Vercel použije už zostavené súbory
+
 ## Vývoj
 
 Aplikácia je pripravená na ďalší vývoj. Môžete pridať:
