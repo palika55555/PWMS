@@ -3,24 +3,26 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:universal_html/html.dart' as html;
+import '../config/api_config.dart';
 
 class RealtimeSyncService {
-  static const String API_BASE_URL = 'https://pwms.vercel.app/api';
   Timer? _syncTimer;
   DateTime? _lastSyncTime;
   Function(Map<String, dynamic>)? _onChangeCallback;
 
-  // Získať správnu API URL - na webe použiť aktuálnu origin
+  // Získať správnu API URL - na webe použiť aktuálnu origin, inak použiť ApiConfig
   String get _apiBaseUrl {
     if (kIsWeb) {
       try {
+        // Na webe skúsiť použiť aktuálnu origin (pre Vercel deployment)
         return '${html.window.location.origin}/api';
       } catch (e) {
-        // Fallback na hardcoded URL ak sa nedá získať origin
-        return API_BASE_URL;
+        // Fallback na ApiConfig ak sa nedá získať origin
+        return ApiConfig.getSyncUrl();
       }
     }
-    return API_BASE_URL;
+    // Pre mobilné aplikácie použiť ApiConfig
+    return ApiConfig.getSyncUrl();
   }
 
   // Spustenie real-time synchronizácie

@@ -66,22 +66,16 @@ Backend automaticky vytvorí tieto tabuľky pri prvom spustení:
 
 ## Aktualizácia Flutter aplikácie
 
-V Flutter aplikácii aktualizujte API URL v:
-- `lib/services/quality_sync_service.dart`
-- `lib/services/shipment_sync_service.dart`
-- `lib/services/realtime_sync_service.dart` (ak existuje)
+Flutter aplikácia je už nakonfigurovaná na použitie Railway backendu.
 
-Zmeňte:
-```dart
-static const String API_BASE_URL = 'https://pwms.vercel.app/api/quality';
+API URL je nastavený v `lib/config/api_config.dart`:
+- Default URL: `https://pwms-production.up.railway.app`
+- Všetky služby (`quality_sync_service.dart`, `shipment_sync_service.dart`, `realtime_sync_service.dart`) používajú tento konfiguračný súbor
+
+Ak potrebujete zmeniť URL, upravte `API_BASE_URL` v `lib/config/api_config.dart` alebo použite environment variable pri buildovaní:
+```bash
+flutter build --dart-define=API_BASE_URL=https://your-custom-domain.com
 ```
-
-Na:
-```dart
-static const String API_BASE_URL = 'https://your-app-name.up.railway.app/api/quality';
-```
-
-Alebo použite environment variable pre flexibilnejšiu konfiguráciu.
 
 ## Lokálne testovanie
 

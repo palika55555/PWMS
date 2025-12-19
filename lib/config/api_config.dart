@@ -1,11 +1,11 @@
 // API konfigurácia pre backend
-// Pre Railway backend nastavte API_BASE_URL na váš Railway domain
+// Railway backend URL - automaticky nastavený Railway
 class ApiConfig {
-  // Railway backend URL - zmeňte na váš Railway domain
-  // Príklad: 'https://pwms-production.up.railway.app'
+  // Railway backend URL
+  // Používa Railway public domain: pwms-production.up.railway.app
   static const String API_BASE_URL = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://pwms.vercel.app',
+    defaultValue: 'https://pwms-production.up.railway.app',
   );
 
   // Helper metóda pre získanie API URL

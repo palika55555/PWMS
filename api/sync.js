@@ -9,8 +9,8 @@ const { Pool } = require('pg');
 
 // Helper na získanie zmien z databázy
 async function getChangesFromDB(since, batchNumber) {
-  const { getPool } = require('./storage');
-  const pool = getPool();
+  const storage = require('./storage');
+  const pool = storage.getPool();
   if (!pool) {
     const sync = await storage.getSyncData();
     let changes = sync.changes || [];

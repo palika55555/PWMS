@@ -1,0 +1,16 @@
+# Railway ignore súbor - ignorovať Flutter súbory pri buildovaní backendu
+android/
+ios/
+windows/
+build/
+.dart_tool/
+.pub/
+*.dart
+pubspec.yaml
+pubspec.lock
+analysis_options.yaml
+lib/
+test/
+web/
+*.iml
+

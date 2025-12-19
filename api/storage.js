@@ -462,6 +462,7 @@ async function addSyncChange(change) {
 
 // Export funkcií
 module.exports = {
+  getPool,
   getQuality,
   setQuality,
   getQualityForBatch,
