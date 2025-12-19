@@ -1,51 +1,52 @@
 #!/bin/bash
-# Build script pre Vercel
+# Build script pre Vercel (optimized)
 
 set -e
 
 echo "Building Flutter web app..."
 
-# Configure git to allow all directories (fixes ownership issues in Vercel)
-echo "Configuring git for Vercel build environment..."
+# Configure git
 git config --global --add safe.directory '*' || true
 
 # Ensure Flutter is in PATH
 if [ -d "flutter" ]; then
     export PATH="$PATH:`pwd`/flutter/bin"
-    # Fix git ownership for Flutter directory
     FLUTTER_DIR="`pwd`/flutter"
     git config --global --add safe.directory "$FLUTTER_DIR" || true
     git config --global --add safe.directory "$FLUTTER_DIR/bin/cache/pkg" || true
     git config --global --add safe.directory "$FLUTTER_DIR/bin/cache" || true
 fi
 
-# Suppress root warning (expected in Vercel build environment)
 export FLUTTER_ROOT_WARNING_SUPPRESSED=1
 
-# Verify Flutter is available
+# Verify Flutter
 if ! command -v flutter &> /dev/null; then
     echo "ERROR: Flutter not found in PATH!"
-    echo "Please ensure install_flutter.sh ran successfully."
     exit 1
 fi
 
 echo "Flutter version:"
 flutter --version
 
-# Get dependencies
+# Get dependencies (optimized)
 echo "Getting Flutter dependencies..."
-if ! flutter pub get; then
-    echo "WARNING: flutter pub get failed, trying again..."
-    flutter pub get || {
+if [ -f "pubspec.lock" ]; then
+    echo "pubspec.lock found, dependencies may be cached..."
+fi
+
+# Try to get dependencies with retry
+if ! flutter pub get --no-example; then
+    echo "WARNING: flutter pub get failed, retrying..."
+    flutter pub get --no-example || {
         echo "ERROR: Failed to get Flutter dependencies"
-        echo "Trying to continue with build anyway..."
+        exit 1
     }
 fi
 
-# Build for web
+# Build for web (optimized)
 echo "Building Flutter web app for production..."
+flutter build web --release --base-href / --no-tree-shake-icons || \
 flutter build web --release --base-href /
 
 echo "Build completed! Output is in build/web/"
-ls -la build/web/ | head -20
 

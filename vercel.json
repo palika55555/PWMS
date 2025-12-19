@@ -4,6 +4,11 @@
   "installCommand": "chmod +x install_flutter.sh && bash install_flutter.sh",
   "outputDirectory": "build/web",
   "framework": null,
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 10
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

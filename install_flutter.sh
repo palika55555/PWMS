@@ -1,79 +1,82 @@
 #!/bin/bash
-# Install Flutter for Vercel build
+# Install Flutter for Vercel build (optimized with cache)
 
-# Don't exit on error immediately - log errors first
 set -e
 set -o pipefail
 
 echo "=== Installing Flutter SDK ==="
 
-# Configure git to allow all directories (fixes ownership issues in Vercel)
-echo "Configuring git for Vercel build environment..."
+# Configure git
 git config --global --add safe.directory '*' || true
 git config --global user.name "Vercel Build" || true
 git config --global user.email "build@vercel.com" || true
 
-# Check if Flutter is already installed
-if [ -d "flutter" ] && [ -f "flutter/bin/flutter" ]; then
-    echo "Flutter already installed, using existing installation..."
+# Cache directory for Flutter SDK
+CACHE_DIR="$HOME/.cache/flutter"
+FLUTTER_VERSION="3.38.5"
+
+# Check cache first (Vercel may preserve cache between builds)
+if [ -d "$CACHE_DIR/flutter" ] && [ -f "$CACHE_DIR/flutter/bin/flutter" ]; then
+    echo "Using cached Flutter SDK from $CACHE_DIR..."
+    cp -r "$CACHE_DIR/flutter" ./flutter
     export PATH="$PATH:`pwd`/flutter/bin"
-    # Ensure git config is set for existing installation
     FLUTTER_DIR="`pwd`/flutter"
     git config --global --add safe.directory "$FLUTTER_DIR" || true
     git config --global --add safe.directory "$FLUTTER_DIR/bin/cache/pkg" || true
     git config --global --add safe.directory "$FLUTTER_DIR/bin/cache" || true
-    
-    # Suppress root warning
     export FLUTTER_ROOT_WARNING_SUPPRESSED=1
-    
     flutter --version
-    echo "Flutter already installed. Dependencies will be fetched during build phase."
+    flutter config --no-analytics
+    echo "=== Using cached Flutter SDK ==="
     exit 0
 fi
 
-# Download and install Flutter
-FLUTTER_VERSION="3.38.5"
+# Check if Flutter is already in current directory
+if [ -d "flutter" ] && [ -f "flutter/bin/flutter" ]; then
+    echo "Flutter already installed, using existing installation..."
+    export PATH="$PATH:`pwd`/flutter/bin"
+    FLUTTER_DIR="`pwd`/flutter"
+    git config --global --add safe.directory "$FLUTTER_DIR" || true
+    git config --global --add safe.directory "$FLUTTER_DIR/bin/cache/pkg" || true
+    git config --global --add safe.directory "$FLUTTER_DIR/bin/cache" || true
+    export FLUTTER_ROOT_WARNING_SUPPRESSED=1
+    flutter --version
+    flutter config --no-analytics
+    
+    # Cache for next build
+    mkdir -p "$CACHE_DIR"
+    cp -r flutter "$CACHE_DIR/flutter" 2>/dev/null || true
+    
+    exit 0
+fi
+
+# Download Flutter (with progress bar)
 FLUTTER_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 
-echo "Downloading Flutter ${FLUTTER_VERSION} from ${FLUTTER_URL}..."
-if ! curl -L "$FLUTTER_URL" -o flutter.tar.xz; then
-    echo "ERROR: Failed to download Flutter"
-    exit 1
-fi
+echo "Downloading Flutter ${FLUTTER_VERSION} (this may take a minute)..."
+curl -L --progress-bar "$FLUTTER_URL" -o flutter.tar.xz
 
 echo "Extracting Flutter..."
-if ! tar xf flutter.tar.xz; then
-    echo "ERROR: Failed to extract Flutter"
-    exit 1
-fi
-
+tar xf flutter.tar.xz
 rm -f flutter.tar.xz
-echo "Flutter extracted successfully"
+
+# Cache Flutter for next build
+mkdir -p "$CACHE_DIR"
+cp -r flutter "$CACHE_DIR/flutter" 2>/dev/null || true
+echo "Flutter cached for future builds"
 
 export PATH="$PATH:`pwd`/flutter/bin"
 
-# Fix git ownership issue for Flutter repository (set before any flutter commands)
-echo "Configuring git for Flutter repository..."
+# Configure git
 FLUTTER_DIR="`pwd`/flutter"
 git config --global --add safe.directory "$FLUTTER_DIR" || true
 git config --global --add safe.directory "$FLUTTER_DIR/bin/cache/pkg" || true
 git config --global --add safe.directory "$FLUTTER_DIR/bin/cache" || true
-
-# Suppress root warning - it's expected in Vercel build environment
 export FLUTTER_ROOT_WARNING_SUPPRESSED=1
 
 echo "Flutter installed successfully!"
 flutter --version
-
-echo "Pre-configuring Flutter..."
 flutter config --no-analytics
 
-# Skip flutter doctor - not needed for web builds and would show Android/iOS warnings
-echo "Skipping flutter doctor (not needed for web builds)..."
-
-# Note: flutter pub get will be run in build_vercel.sh
-# We skip it here to avoid install failures - dependencies will be fetched during build
-echo "Flutter SDK installation complete. Dependencies will be fetched during build phase."
-
-echo "=== Flutter installation completed successfully! ==="
+echo "=== Flutter installation completed! ==="
 

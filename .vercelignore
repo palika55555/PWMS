@@ -1,2 +1,17 @@
-# Ignore everything except what we need
-# But don't ignore build/web if it exists (for pre-built deployments)
+# Ignore files that don't need to be deployed
+android/
+ios/
+windows/
+build/windows/
+build/android/
+build/ios/
+*.iml
+.gradle/
+.idea/
+.vscode/
+*.log
+.DS_Store
+Thumbs.db
+
+# Keep build/web for deployment
+!build/web/
