@@ -93,24 +93,112 @@ class _ProductionScreenState extends State<ProductionScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     
-    final materials = await _materialService.getAllMaterials();
-    final products = await _productionService.getAllProducts();
-    final batches = await _productionService.getProductionBatches(limit: 10);
-    final batchesByDay = await _productionService.getProductionByDays(days: 30);
-    final alerts = await _alertService.checkLowStock();
+    // Na web platforme databáza nie je dostupná
+    if (kIsWeb) {
+      setState(() {
+        _materials = [];
+        _products = [];
+        _recentBatches = [];
+        _batchesByDay = {};
+        _alerts = [];
+        _isLoading = false;
+      });
+      return;
+    }
     
-    setState(() {
-      _materials = materials;
-      _products = products;
-      _recentBatches = batches;
-      _batchesByDay = batchesByDay;
-      _alerts = alerts;
-      _isLoading = false;
-    });
+    try {
+      final materials = await _materialService.getAllMaterials();
+      final products = await _productionService.getAllProducts();
+      final batches = await _productionService.getProductionBatches(limit: 10);
+      final batchesByDay = await _productionService.getProductionByDays(days: 30);
+      final alerts = await _alertService.checkLowStock();
+      
+      setState(() {
+        _materials = materials;
+        _products = products;
+        _recentBatches = batches;
+        _batchesByDay = batchesByDay;
+        _alerts = alerts;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading data: $e');
+      setState(() {
+        _materials = [];
+        _products = [];
+        _recentBatches = [];
+        _batchesByDay = {};
+        _alerts = [];
+        _isLoading = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chyba pri načítaní dát: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Na web platforme zobraziť informáciu, že táto funkcionalita nie je dostupná
+    if (kIsWeb) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Výroba'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 64,
+                  color: Colors.blue,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Táto funkcionalita nie je dostupná na web platforme',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Pre správu výroby použite desktop aplikáciu.\n'
+                  'Na web stránke môžete zobraziť detaily výroby\n'
+                  'po naskenovaní QR kódu.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Späť'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Výroba'),

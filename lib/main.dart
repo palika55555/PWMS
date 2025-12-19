@@ -103,12 +103,25 @@ class ProductionDetailsWebRoute extends StatelessWidget {
       final jsonString = utf8.decode(decodedBytes);
       final productionData = jsonDecode(jsonString) as Map<String, dynamic>;
       
+      print('Production data decoded successfully: ${productionData.keys}');
+      
       return ProductionDetailsWeb(productionData: productionData);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Error decoding production data: $e');
+      print('Stack trace: $stackTrace');
       return Scaffold(
         appBar: AppBar(title: const Text('Chyba')),
         body: Center(
-          child: Text('Chyba pri dekódovaní dát: $e'),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 16),
+              Text('Chyba pri dekódovaní dát: $e'),
+              const SizedBox(height: 8),
+              Text('URL parameter: ${dataParam?.substring(0, dataParam.length > 50 ? 50 : dataParam.length)}...'),
+            ],
+          ),
         ),
       );
     }

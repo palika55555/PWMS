@@ -54,17 +54,19 @@
         return;
       }
       
-      // Logovať len kritické chyby
+      // Logovať len kritické chyby, ale neprerušovať aplikáciu
       if (e.error && e.error.toString().includes('Error')) {
-        console.warn('Application error (non-critical):', e.error);
+        console.warn('Application error (non-critical, continuing):', e.error);
       }
       
       // Nezobrazovať error screen - aplikácia sa môže načítať aj s menšími chybami
-    });
+      e.preventDefault(); // Zabrániť default error handling
+      return true; // Povoliť aplikácii pokračovať
+    }, true); // Use capture phase
     
     // Unhandled promise rejection handling
     window.addEventListener('unhandledrejection', function(e) {
-      console.warn('Unhandled promise rejection (non-critical):', e.reason);
+      console.warn('Unhandled promise rejection (non-critical, continuing):', e.reason);
       e.preventDefault(); // Zabrániť zobrazeniu v konzole
     });
   </script>

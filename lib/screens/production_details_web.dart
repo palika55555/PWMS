@@ -35,9 +35,13 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
   }
 
   Future<void> _loadQualityStatuses() async {
-    if (!kIsWeb || widget.productionData == null || !mounted) return;
-
+    if (!kIsWeb || widget.productionData == null) return;
+    
+    // Počkať kým sa widget úplne načíta
+    await Future.delayed(const Duration(milliseconds: 100));
+    
     if (!mounted) return;
+    
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -56,7 +60,7 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
 
       final baseUrl = html.window.location.origin;
       
-      // Načítať kvalitu pre každú šaržu (s timeoutom)
+      // Načítať kvalitu pre každú šaržu (s timeoutom a error handling)
       for (var batchNum in batchNumbers) {
         if (batchNum == null || !mounted) continue;
         
@@ -64,34 +68,39 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
           final response = await http.get(
             Uri.parse('$baseUrl/api/quality?batchNumber=$batchNum'),
           ).timeout(
-            const Duration(seconds: 5),
+            const Duration(seconds: 3),
             onTimeout: () {
               throw Exception('Request timeout');
             },
-          );
+          ).catchError((e) {
+            // Ignorovať network chyby
+            print('Network error loading quality for $batchNum: $e');
+            return http.Response('{"success": false}', 500);
+          });
 
           if (response.statusCode == 200 && mounted) {
-            final data = jsonDecode(response.body);
-            if (data['success'] == true && data['quality'] != null) {
-              if (mounted) {
-                setState(() {
-                  _qualityStatuses[batchNum.toString()] = data['quality']['status'] ?? 'pending';
-                  _qualityNotes[batchNum.toString()] = data['quality']['notes'];
-                });
+            try {
+              final data = jsonDecode(response.body);
+              if (data['success'] == true && data['quality'] != null) {
+                if (mounted) {
+                  setState(() {
+                    _qualityStatuses[batchNum.toString()] = data['quality']['status'] ?? 'pending';
+                    _qualityNotes[batchNum.toString()] = data['quality']['notes'];
+                  });
+                }
               }
+            } catch (e) {
+              print('Error parsing quality response for $batchNum: $e');
             }
           }
         } catch (e) {
-          // Ignorovať chyby pri načítaní kvality - nie je kritické
+          // Ignorovať všetky chyby pri načítaní kvality - nie je kritické
           print('Error loading quality for $batchNum: $e');
         }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Chyba pri načítaní stavu kvality: $e';
-        });
-      }
+      // Ignorovať chyby - kvalita nie je kritická pre zobrazenie
+      print('Non-critical error loading quality statuses: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -298,11 +307,17 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
       );
     }
 
+    // Debug: vypísať dostupné kľúče
+    print('Production data keys: ${widget.productionData!.keys}');
+    print('Production data: ${widget.productionData}');
+
     final date = widget.productionData!['date'] as String?;
     final batches = widget.productionData!['batches'] as int? ?? 0;
     final totalQuantity = widget.productionData!['total_quantity'] as int? ?? 0;
     final products = widget.productionData!['products'] as Map<String, dynamic>? ?? {};
     final batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
+    
+    print('Parsed data - date: $date, batches: $batches, totalQuantity: $totalQuantity, products: $products, batchNumbers: $batchNumbers');
 
     // Parsovanie dátumu
     DateTime? parsedDate;
