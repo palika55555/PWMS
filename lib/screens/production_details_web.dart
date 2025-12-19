@@ -599,21 +599,47 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
     final products = widget.productionData!['products'] as Map<String, dynamic>? ?? {};
     
     // Získať batch_numbers - skúsiť z rôznych zdrojov
-    List batchNumbers = widget.productionData!['batch_numbers'] as List? ?? [];
+    List batchNumbers = [];
     
-    // Ak batch_numbers nie je, skúsiť z batch_data
-    if (batchNumbers.isEmpty && widget.productionData!['batch_data'] != null) {
-      final batchData = widget.productionData!['batch_data'] as List?;
-      if (batchData != null && batchData.isNotEmpty) {
-        batchNumbers = batchData
-            .map((b) => b['batchNumber'] as String?)
-            .where((bn) => bn != null)
-            .toList();
-        print('Extracted batchNumbers from batch_data: $batchNumbers');
+    // Skúsiť z batch_numbers
+    final batchNumbersFromData = widget.productionData!['batch_numbers'];
+    if (batchNumbersFromData != null) {
+      if (batchNumbersFromData is List) {
+        batchNumbers = batchNumbersFromData;
+        print('Found batch_numbers as List: $batchNumbers');
+      } else {
+        print('Warning: batch_numbers is not a List: ${batchNumbersFromData.runtimeType}');
       }
     }
     
-    print('Parsed data - date: $date, batches: $batches, totalQuantity: $totalQuantity, products: $products, batchNumbers: $batchNumbers');
+    // Ak batch_numbers nie je, skúsiť z batch_data
+    if (batchNumbers.isEmpty && widget.productionData!['batch_data'] != null) {
+      final batchData = widget.productionData!['batch_data'];
+      if (batchData is List && batchData.isNotEmpty) {
+        batchNumbers = batchData
+            .map((b) {
+              if (b is Map) {
+                return b['batchNumber'] as String?;
+              }
+              return null;
+            })
+            .where((bn) => bn != null)
+            .toList();
+        print('Extracted batchNumbers from batch_data: $batchNumbers');
+      } else {
+        print('Warning: batch_data is not a List or is empty: ${batchData.runtimeType}');
+      }
+    }
+    
+    // Debug: vypísať všetky dostupné kľúče a batch_numbers
+    print('=== DEBUG Production Details ===');
+    print('Production data keys: ${widget.productionData!.keys}');
+    print('batch_numbers from data: ${widget.productionData!['batch_numbers']}');
+    print('batch_data from data: ${widget.productionData!['batch_data']}');
+    print('Final batchNumbers: $batchNumbers');
+    print('batchNumbers.isEmpty: ${batchNumbers.isEmpty}');
+    print('batchNumbers.length: ${batchNumbers.length}');
+    print('Parsed data - date: $date, batches: $batches, totalQuantity: $totalQuantity, products: $products');
 
     // Parsovanie dátumu
     DateTime? parsedDate;
@@ -865,9 +891,21 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    if (batchNumbers.isEmpty)
-                      const Text('Žiadne šarže na expedovanie')
-                    else ...[
+                    // Debug info
+                    if (batchNumbers.isEmpty) ...[
+                      const Text('Žiadne šarže na expedovanie'),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Debug: batchNumbers je prázdne (${batchNumbers.length}). '
+                        'Skontrolujte konzolu pre viac informácií.',
+                        style: const TextStyle(fontSize: 12, color: Colors.orange),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Dostupné kľúče v productionData: ${widget.productionData!.keys.join(", ")}',
+                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      ),
+                    ] else ...[
                       ...batchNumbers.map((batchNum) {
                         if (batchNum == null) return const SizedBox.shrink();
                         final batchStr = batchNum.toString();
