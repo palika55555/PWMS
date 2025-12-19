@@ -5,10 +5,25 @@ set -e
 
 echo "=== Installing Flutter SDK ==="
 
+# Configure git to allow all directories (fixes ownership issues in Vercel)
+echo "Configuring git for Vercel build environment..."
+git config --global --add safe.directory '*' || true
+git config --global user.name "Vercel Build" || true
+git config --global user.email "build@vercel.com" || true
+
 # Check if Flutter is already installed
 if [ -d "flutter" ] && [ -f "flutter/bin/flutter" ]; then
     echo "Flutter already installed, using existing installation..."
     export PATH="$PATH:`pwd`/flutter/bin"
+    # Ensure git config is set for existing installation
+    FLUTTER_DIR="`pwd`/flutter"
+    git config --global --add safe.directory "$FLUTTER_DIR" || true
+    git config --global --add safe.directory "$FLUTTER_DIR/bin/cache/pkg" || true
+    git config --global --add safe.directory "$FLUTTER_DIR/bin/cache" || true
+    
+    # Suppress root warning
+    export FLUTTER_ROOT_WARNING_SUPPRESSED=1
+    
     flutter --version
     flutter pub get
     exit 0
@@ -24,6 +39,16 @@ tar xf flutter.tar.xz
 rm flutter.tar.xz
 
 export PATH="$PATH:`pwd`/flutter/bin"
+
+# Fix git ownership issue for Flutter repository (set before any flutter commands)
+echo "Configuring git for Flutter repository..."
+FLUTTER_DIR="`pwd`/flutter"
+git config --global --add safe.directory "$FLUTTER_DIR" || true
+git config --global --add safe.directory "$FLUTTER_DIR/bin/cache/pkg" || true
+git config --global --add safe.directory "$FLUTTER_DIR/bin/cache" || true
+
+# Suppress root warning - it's expected in Vercel build environment
+export FLUTTER_ROOT_WARNING_SUPPRESSED=1
 
 echo "Flutter installed successfully!"
 flutter --version

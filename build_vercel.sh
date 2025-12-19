@@ -5,10 +5,22 @@ set -e
 
 echo "Building Flutter web app..."
 
+# Configure git to allow all directories (fixes ownership issues in Vercel)
+echo "Configuring git for Vercel build environment..."
+git config --global --add safe.directory '*' || true
+
 # Ensure Flutter is in PATH
 if [ -d "flutter" ]; then
     export PATH="$PATH:`pwd`/flutter/bin"
+    # Fix git ownership for Flutter directory
+    FLUTTER_DIR="`pwd`/flutter"
+    git config --global --add safe.directory "$FLUTTER_DIR" || true
+    git config --global --add safe.directory "$FLUTTER_DIR/bin/cache/pkg" || true
+    git config --global --add safe.directory "$FLUTTER_DIR/bin/cache" || true
 fi
+
+# Suppress root warning (expected in Vercel build environment)
+export FLUTTER_ROOT_WARNING_SUPPRESSED=1
 
 # Verify Flutter is available
 if ! command -v flutter &> /dev/null; then
