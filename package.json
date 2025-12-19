@@ -1,0 +1,9 @@
+{
+  "name": "pwms",
+  "version": "1.0.0",
+  "scripts": {
+    "install": "bash install_flutter.sh",
+    "build": "bash build_vercel.sh"
+  }
+}
+

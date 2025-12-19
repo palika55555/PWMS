@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "bash build_vercel.sh",
+  "buildCommand": "chmod +x install_flutter.sh build_vercel.sh && bash install_flutter.sh && bash build_vercel.sh",
+  "installCommand": "echo 'Install will happen in buildCommand'",
   "outputDirectory": "build/web",
-  "installCommand": "curl -L https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.3-stable.tar.xz | tar xJ && export PATH=\"$PATH:`pwd`/flutter/bin\" && flutter doctor && flutter pub get",
   "framework": null,
   "rewrites": [
     {
