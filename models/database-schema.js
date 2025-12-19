@@ -71,9 +71,12 @@ export const createLocalSchema = (db) => {
       production_date DATETIME DEFAULT CURRENT_TIMESTAMP,
       notes TEXT,
       qr_code TEXT,
+      status TEXT DEFAULT 'completed',
+      recipe_id TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       synced INTEGER DEFAULT 0,
-      FOREIGN KEY (production_type_id) REFERENCES production_types(id)
+      FOREIGN KEY (production_type_id) REFERENCES production_types(id),
+      FOREIGN KEY (recipe_id) REFERENCES recipes(id)
     )
   `);
 
@@ -404,9 +407,12 @@ export const createRemoteSchema = async (pool) => {
         production_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         notes TEXT,
         qr_code TEXT,
+        status VARCHAR(50) DEFAULT 'completed',
+        recipe_id VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         synced INTEGER DEFAULT 1,
-        FOREIGN KEY (production_type_id) REFERENCES production_types(id)
+        FOREIGN KEY (production_type_id) REFERENCES production_types(id),
+        FOREIGN KEY (recipe_id) REFERENCES recipes(id)
       )
     `);
 

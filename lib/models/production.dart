@@ -1,5 +1,3 @@
-import 'production_type.dart';
-
 class ProductionMaterial {
   final String id;
   final String materialId;
@@ -41,6 +39,8 @@ class Production {
   final DateTime? productionDate;
   final String? notes;
   final String? qrCode;
+  final String? status;
+  final String? recipeId;
   final DateTime? createdAt;
   final bool synced;
   final List<ProductionMaterial> materials;
@@ -53,6 +53,8 @@ class Production {
     this.productionDate,
     this.notes,
     this.qrCode,
+    this.status,
+    this.recipeId,
     this.createdAt,
     this.synced = false,
     this.materials = const [],
@@ -69,6 +71,8 @@ class Production {
           : null,
       notes: json['notes'] as String?,
       qrCode: json['qr_code'] as String?,
+      status: json['status'] as String?,
+      recipeId: json['recipe_id'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : null,
@@ -100,6 +104,8 @@ class Production {
     DateTime? productionDate,
     String? notes,
     String? qrCode,
+    String? status,
+    String? recipeId,
     DateTime? createdAt,
     bool? synced,
     List<ProductionMaterial>? materials,
@@ -112,6 +118,8 @@ class Production {
       productionDate: productionDate ?? this.productionDate,
       notes: notes ?? this.notes,
       qrCode: qrCode ?? this.qrCode,
+      status: status ?? this.status,
+      recipeId: recipeId ?? this.recipeId,
       createdAt: createdAt ?? this.createdAt,
       synced: synced ?? this.synced,
       materials: materials ?? this.materials,

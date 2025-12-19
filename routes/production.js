@@ -87,7 +87,7 @@ router.get('/:id', (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { productionTypeId, quantity, materials, notes, productionDate } = req.body;
+    const { productionTypeId, quantity, materials, notes, productionDate, status, recipeId } = req.body;
     if (!productionTypeId || !quantity) {
       return res.status(400).json({ error: 'Production type ID and quantity are required' });
     }
@@ -96,7 +96,9 @@ router.post('/', async (req, res) => {
       quantity,
       materials,
       notes,
-      productionDate
+      productionDate,
+      status,
+      recipeId
     });
     res.status(201).json(production);
   } catch (error) {

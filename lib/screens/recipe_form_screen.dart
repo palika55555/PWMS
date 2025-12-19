@@ -7,8 +7,9 @@ import '../models/material.dart' as material_model;
 
 class RecipeFormScreen extends StatefulWidget {
   final dynamic recipe;
+  final String? productionTypeId;
 
-  const RecipeFormScreen({super.key, this.recipe});
+  const RecipeFormScreen({super.key, this.recipe, this.productionTypeId});
 
   @override
   State<RecipeFormScreen> createState() => _RecipeFormScreenState();
@@ -24,6 +25,11 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
   List<material_model.Material> _materials = [];
   List<Map<String, dynamic>> _recipeMaterials = [];
   bool _isLoading = true;
+  
+  // Pre vytvorenie receptu z miešačky
+  bool _useMixerMode = false;
+  final _piecesFromMixerController = TextEditingController();
+  List<Map<String, dynamic>> _mixerMaterials = []; // Materiály pre jednu miešačku
 
   @override
   void initState() {
@@ -44,16 +50,8 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       
       List<Map<String, dynamic>> recipeMaterials = [];
       
+      // Načítanie materiálov receptu
       if (widget.recipe != null) {
-        if (widget.recipe['production_type_id'] != null) {
-          final selectedType = types.firstWhere(
-            (t) => t.id == widget.recipe['production_type_id'],
-            orElse: () => types.first,
-          );
-          _selectedType = selectedType;
-        }
-        
-        // Načítanie materiálov receptu
         if (widget.recipe['materials'] != null && 
             (widget.recipe['materials'] as List).isNotEmpty) {
           recipeMaterials = List<Map<String, dynamic>>.from(
@@ -81,11 +79,28 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         }
       }
       
+      // Najprv nastavíme zoznamy v setState
       setState(() {
         _productionTypes = types;
         _materials = materials;
         _recipeMaterials = recipeMaterials;
         _isLoading = false;
+        
+        // Potom nastavíme _selectedType z inštancií v _productionTypes
+        // Ak je poskytnutý productionTypeId, automaticky ho vyberieme
+        if (widget.productionTypeId != null) {
+          _selectedType = _productionTypes.firstWhere(
+            (t) => t.id == widget.productionTypeId,
+            orElse: () => _productionTypes.isNotEmpty ? _productionTypes.first : _productionTypes.first,
+          );
+        } else if (widget.recipe != null) {
+          if (widget.recipe['production_type_id'] != null) {
+            _selectedType = _productionTypes.firstWhere(
+              (t) => t.id == widget.recipe['production_type_id'],
+              orElse: () => _productionTypes.isNotEmpty ? _productionTypes.first : _productionTypes.first,
+            );
+          }
+        }
       });
     } catch (e) {
       setState(() => _isLoading = false);
@@ -121,6 +136,114 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     );
   }
 
+  void _addMixerMaterial() {
+    if (_materials.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Najprv musíte vytvoriť materiály')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => _MixerMaterialDialog(
+        materials: _materials,
+        onAdd: (materialId, quantityForMixer) {
+          setState(() {
+            _mixerMaterials.add({
+              'materialId': materialId,
+              'quantityForMixer': quantityForMixer,
+            });
+            if (_piecesFromMixerController.text.isNotEmpty) {
+              _calculateMaterialsPerPiece();
+            }
+          });
+        },
+      ),
+    );
+  }
+
+  void _editMixerMaterial(int index) {
+    final material = _mixerMaterials[index];
+    final materialObj = _materials.firstWhere(
+      (m) => m.id == material['materialId'] as String,
+    );
+
+    final quantityController = TextEditingController(
+      text: material['quantityForMixer'].toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Upraviť ${materialObj.name}'),
+        content: TextFormField(
+          controller: quantityController,
+          decoration: InputDecoration(
+            labelText: 'Množstvo pre miešačku',
+            suffixText: materialObj.unit,
+            border: const OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušiť'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newQuantity = double.tryParse(quantityController.text);
+              if (newQuantity != null && newQuantity > 0) {
+                setState(() {
+                  _mixerMaterials[index] = {
+                    'materialId': material['materialId'],
+                    'quantityForMixer': newQuantity,
+                  };
+                  if (_piecesFromMixerController.text.isNotEmpty) {
+                    _calculateMaterialsPerPiece();
+                  }
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Uložiť'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _removeMixerMaterial(int index) {
+    setState(() {
+      _mixerMaterials.removeAt(index);
+      if (_piecesFromMixerController.text.isNotEmpty) {
+        _calculateMaterialsPerPiece();
+      }
+    });
+  }
+
+  void _calculateMaterialsPerPiece() {
+    final pieces = double.tryParse(_piecesFromMixerController.text);
+    if (pieces == null || pieces <= 0) {
+      setState(() {
+        _recipeMaterials = [];
+      });
+      return;
+    }
+
+    setState(() {
+      _recipeMaterials = _mixerMaterials.map((mixerMat) {
+        final quantityForMixer = mixerMat['quantityForMixer'] as double;
+        final quantityPerUnit = quantityForMixer / pieces;
+        return {
+          'materialId': mixerMat['materialId'],
+          'quantityPerUnit': quantityPerUnit,
+        };
+      }).toList();
+    });
+  }
+
   void _removeMaterial(int index) {
     setState(() {
       _recipeMaterials.removeAt(index);
@@ -135,9 +258,34 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       );
       return;
     }
+    // Validácia pre mixer mode
+    if (_useMixerMode) {
+      if (_piecesFromMixerController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Zadajte počet kusov z jednej miešačky'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      if (_mixerMaterials.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pridajte aspoň jeden materiál do miešačky'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+    }
+    
     if (_recipeMaterials.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pridajte aspoň jeden materiál do receptu')),
+        const SnackBar(
+          content: Text('Pridajte aspoň jeden materiál do receptu'),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
@@ -164,9 +312,20 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         );
       }
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Vrátime true, aby production_form_screen vedel, že recept bol vytvorený
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.recipe == null ? 'Recept bol vytvorený' : 'Recept bol aktualizovaný')),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(widget.recipe == null ? 'Recept bol vytvorený' : 'Recept bol aktualizovaný'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -263,10 +422,17 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                           const SizedBox(height: 16),
                           DropdownButtonFormField<ProductionType>(
                             value: _selectedType,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Typ výroby *',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.inventory_2),
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.inventory_2),
+                              filled: widget.productionTypeId != null,
+                              fillColor: widget.productionTypeId != null 
+                                  ? Colors.blue.shade50 
+                                  : null,
+                              helperText: widget.productionTypeId != null
+                                  ? 'Receptúra je napárovaná na tento typ výroby'
+                                  : null,
                             ),
                             items: _productionTypes.map((type) {
                               return DropdownMenuItem(
@@ -274,14 +440,43 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                                 child: Text(type.name),
                               );
                             }).toList(),
-                            onChanged: (value) {
-                              setState(() => _selectedType = value);
-                            },
+                            onChanged: widget.productionTypeId != null 
+                                ? null // Disabled, ak je poskytnutý productionTypeId
+                                : (value) {
+                                    setState(() => _selectedType = value);
+                                  },
                             validator: (value) {
                               if (value == null) return 'Vyberte typ výroby';
                               return null;
                             },
                           ),
+                          if (widget.productionTypeId != null && _selectedType != null) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.blue.shade200),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline, size: 18, color: Colors.blue.shade700),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Táto receptúra bude napárovaná na typ výroby: ${_selectedType!.name}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.blue.shade900,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 16),
                           TextFormField(
                             controller: _nameController,
@@ -314,8 +509,189 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  // Materiály
-                  Card(
+                  // Režim miešačky
+                  if (widget.recipe == null) ...[
+                    Card(
+                      color: Colors.blue.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.blender, color: Colors.blue.shade700),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Vytvorenie z miešačky',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Vytvorte recept na základe množstva materiálov pre jednu miešačku a počtu kusov, ktoré sa z nej vyrobia.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            SwitchListTile(
+                              title: const Text('Použiť režim miešačky'),
+                              subtitle: const Text('Recept sa vytvorí na základe miešačky'),
+                              value: _useMixerMode,
+                              onChanged: (value) {
+                                setState(() {
+                                  _useMixerMode = value;
+                                  if (value) {
+                                    _recipeMaterials = [];
+                                    _mixerMaterials = [];
+                                  } else {
+                                    _mixerMaterials = [];
+                                  }
+                                });
+                              },
+                            ),
+                            if (_useMixerMode) ...[
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _piecesFromMixerController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Počet kusov z jednej miešačky *',
+                                  border: OutlineInputBorder(),
+                                  hintText: 'napr. 50',
+                                  prefixIcon: Icon(Icons.numbers),
+                                  helperText: 'Koľko kusov sa vyrobí z jednej miešačky?',
+                                ),
+                                keyboardType: TextInputType.number,
+                                onChanged: (value) {
+                                  if (value.isNotEmpty && _mixerMaterials.isNotEmpty) {
+                                    _calculateMaterialsPerPiece();
+                                  }
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: _addMixerMaterial,
+                                icon: const Icon(Icons.add_circle_outline),
+                                label: const Text('Pridať materiál do miešačky'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                              if (_mixerMaterials.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                const Divider(),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Materiály pre jednu miešačku:',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ..._mixerMaterials.asMap().entries.map((entry) {
+                                  final index = entry.key;
+                                  final material = entry.value;
+                                  final materialName = _materials
+                                      .firstWhere(
+                                        (m) => m.id == material['materialId'] as String,
+                                      )
+                                      .name;
+                                  final materialUnit = _materials
+                                      .firstWhere(
+                                        (m) => m.id == material['materialId'] as String,
+                                      )
+                                      .unit;
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    color: Colors.blue.shade50,
+                                    child: ListTile(
+                                      leading: Icon(Icons.inventory_2, color: Colors.blue.shade700),
+                                      title: Text(materialName),
+                                      subtitle: Text(
+                                        '${material['quantityForMixer']} $materialUnit',
+                                        style: TextStyle(
+                                          color: Colors.blue.shade700,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.edit),
+                                            onPressed: () => _editMixerMaterial(index),
+                                            color: Colors.blue,
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.delete),
+                                            onPressed: () => _removeMixerMaterial(index),
+                                            color: Colors.red,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }),
+                                if (_piecesFromMixerController.text.isNotEmpty) ...[
+                                  const SizedBox(height: 16),
+                                  const Divider(),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Vypočítané množstvá na 1 kus:',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green.shade700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ..._recipeMaterials.map((material) {
+                                    final materialName = _materials
+                                        .firstWhere(
+                                          (m) => m.id == material['materialId'] as String,
+                                        )
+                                        .name;
+                                    final materialUnit = _materials
+                                        .firstWhere(
+                                          (m) => m.id == material['materialId'] as String,
+                                        )
+                                        .unit;
+                                    return Card(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      color: Colors.green.shade50,
+                                      child: ListTile(
+                                        leading: Icon(Icons.check_circle, color: Colors.green.shade700),
+                                        title: Text(materialName),
+                                        subtitle: Text(
+                                          '${material['quantityPerUnit'].toStringAsFixed(4)} $materialUnit / kus',
+                                          style: TextStyle(
+                                            color: Colors.green.shade700,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ],
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                  // Materiály (štandardný režim)
+                  if (!_useMixerMode) ...[
+                    Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -463,12 +839,39 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                       ),
                     ),
                   ),
+                  ],
                   const SizedBox(height: 32),
+                  // Footer s validáciou
+                  if (_recipeMaterials.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade900,
+                        border: Border(
+                          top: BorderSide(
+                            color: Colors.purple.shade400,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'Pridajte aspoň jeden materiál do receptu',
+                        style: TextStyle(
+                          color: Colors.grey.shade300,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: _submitForm,
+                    onPressed: _recipeMaterials.isEmpty ? null : _submitForm,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.purple,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey.shade400,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -501,6 +904,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
+    _piecesFromMixerController.dispose();
     super.dispose();
   }
 }
@@ -552,6 +956,88 @@ class _RecipeMaterialDialogState extends State<_RecipeMaterialDialog> {
               labelText: 'Množstvo na 1 jednotku výroby',
               border: OutlineInputBorder(),
               hintText: 'napr. 50 pre 50 kg cementu na 1 m²',
+            ),
+            keyboardType: TextInputType.number,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Zrušiť'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (_selectedMaterial != null &&
+                _quantityController.text.isNotEmpty) {
+              final quantity = double.tryParse(_quantityController.text);
+              if (quantity != null && quantity > 0) {
+                widget.onAdd(_selectedMaterial!.id, quantity);
+                Navigator.pop(context);
+              }
+            }
+          },
+          child: const Text('Pridať'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    _quantityController.dispose();
+    super.dispose();
+  }
+}
+
+class _MixerMaterialDialog extends StatefulWidget {
+  final List<material_model.Material> materials;
+  final Function(String materialId, double quantityForMixer) onAdd;
+
+  const _MixerMaterialDialog({
+    required this.materials,
+    required this.onAdd,
+  });
+
+  @override
+  State<_MixerMaterialDialog> createState() => _MixerMaterialDialogState();
+}
+
+class _MixerMaterialDialogState extends State<_MixerMaterialDialog> {
+  material_model.Material? _selectedMaterial;
+  final _quantityController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Pridať materiál do miešačky'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<material_model.Material>(
+            value: _selectedMaterial,
+            decoration: const InputDecoration(
+              labelText: 'Materiál',
+              border: OutlineInputBorder(),
+            ),
+            items: widget.materials.map((material) {
+              return DropdownMenuItem<material_model.Material>(
+                value: material,
+                child: Text('${material.name} (${material.unit})'),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() => _selectedMaterial = value);
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _quantityController,
+            decoration: const InputDecoration(
+              labelText: 'Množstvo pre jednu miešačku',
+              border: OutlineInputBorder(),
+              hintText: 'napr. 500 pre 500 kg cementu',
+              helperText: 'Celkové množstvo materiálu pre jednu miešačku',
             ),
             keyboardType: TextInputType.number,
           ),

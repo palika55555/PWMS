@@ -101,9 +101,29 @@ export class Production {
     `).all(productionId);
   }
 
-  static async create({ productionTypeId, quantity, materials, notes, productionDate }) {
+  static async create({ productionTypeId, quantity, materials, notes, productionDate, status, recipeId }) {
     const db = getLocalDb();
     const id = uuidv4();
+    
+    // Check material availability
+    let hasInsufficientMaterials = false;
+    if (materials && materials.length > 0) {
+      for (const material of materials) {
+        try {
+          const warehouseItem = Warehouse.getByMaterialId(material.materialId);
+          if (!warehouseItem || warehouseItem.quantity < material.quantity) {
+            hasInsufficientMaterials = true;
+            break;
+          }
+        } catch (error) {
+          hasInsufficientMaterials = true;
+          break;
+        }
+      }
+    }
+    
+    // Set status: 'pending' if insufficient materials, otherwise 'completed'
+    const productionStatus = hasInsufficientMaterials ? 'pending' : (status || 'completed');
     
     // Generate QR code for production
     const qrData = JSON.stringify({ id, productionTypeId, quantity, date: productionDate || new Date().toISOString() });
@@ -117,7 +137,7 @@ export class Production {
       WHERE batch_number LIKE ?
     `).get(`BATCH-${dateStr}-%`);
     const batchNum = (batchCount?.count || 0) + 1;
-    const batchNumber = `BATCH-${dateStr}-${String(batchNum).length === 1 ? '00' : String(batchNum).length === 2 ? '0' : ''}${batchNum}`;
+    const batchNumber = `BATCH-${dateStr}-${String(batchNum).padStart(3, '0')}`;
     
     // Generate QR code for batch
     const batchQrData = JSON.stringify({ 
@@ -131,16 +151,17 @@ export class Production {
     db.transaction(() => {
       // Create production record
       db.prepare(`
-        INSERT INTO production (id, production_type_id, quantity, notes, qr_code, production_date, synced)
-        VALUES (?, ?, ?, ?, ?, ?, 0)
-      `).run(id, productionTypeId, quantity, notes || null, qrCode, productionDate || new Date().toISOString());
+        INSERT INTO production (id, production_type_id, quantity, notes, qr_code, production_date, status, recipe_id, synced)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+      `).run(id, productionTypeId, quantity, notes || null, qrCode, productionDate || new Date().toISOString(), productionStatus, recipeId || null);
       
       // Create batch automatically
       const batchId = uuidv4();
+      const batchStatus = hasInsufficientMaterials ? 'pending' : 'completed';
       db.prepare(`
         INSERT INTO batches (id, production_id, batch_number, quantity, qr_code, status, created_at, synced)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, 0)
-      `).run(batchId, id, batchNumber, quantity, batchQrCode, new Date().toISOString());
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+      `).run(batchId, id, batchNumber, quantity, batchQrCode, batchStatus, new Date().toISOString());
       
       // Add materials used
       if (materials && materials.length > 0) {
@@ -153,11 +174,13 @@ export class Production {
           const materialId = uuidv4();
           stmt.run(materialId, id, material.materialId, material.quantity);
           
-          // Deduct from warehouse
-          try {
-            Warehouse.adjustQuantity(material.materialId, -material.quantity);
-          } catch (error) {
-            console.error('Error adjusting warehouse quantity:', error);
+          // Deduct from warehouse only if materials are sufficient
+          if (!hasInsufficientMaterials) {
+            try {
+              Warehouse.adjustQuantity(material.materialId, -material.quantity);
+            } catch (error) {
+              console.error('Error adjusting warehouse quantity:', error);
+            }
           }
         }
       }
@@ -167,7 +190,7 @@ export class Production {
         INSERT INTO sync_queue (table_name, record_id, operation, data)
         VALUES (?, ?, ?, ?)
       `).run('production', id, 'INSERT', JSON.stringify({
-        id, productionTypeId, quantity, materials, notes, productionDate, qrCode
+        id, productionTypeId, quantity, materials, notes, productionDate, qrCode, status: productionStatus, recipeId
       }));
       
       // Add to sync queue for batch
@@ -175,11 +198,14 @@ export class Production {
         INSERT INTO sync_queue (table_name, record_id, operation, data)
         VALUES (?, ?, ?, ?)
       `).run('batches', batchId, 'INSERT', JSON.stringify({
-        id: batchId, production_id: id, batch_number: batchNumber, quantity, qr_code: batchQrCode, status: 'pending'
+        id: batchId, production_id: id, batch_number: batchNumber, quantity, qr_code: batchQrCode, status: batchStatus
       }));
     })();
     
-    return this.getById(id);
+    const result = this.getById(id);
+    result.status = productionStatus;
+    result.hasInsufficientMaterials = hasInsufficientMaterials;
+    return result;
   }
 
   static update(id, { quantity, notes }) {

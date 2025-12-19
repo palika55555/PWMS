@@ -168,6 +168,8 @@ class ApiService extends ChangeNotifier {
     required List<Map<String, dynamic>> materials,
     String? notes,
     DateTime? productionDate,
+    String? status,
+    String? recipeId,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/production'),
@@ -178,6 +180,8 @@ class ApiService extends ChangeNotifier {
         'materials': materials,
         'notes': notes,
         'productionDate': productionDate?.toIso8601String(),
+        'status': status,
+        'recipeId': recipeId,
       }),
     );
     if (response.statusCode == 201) {

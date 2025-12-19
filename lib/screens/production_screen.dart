@@ -310,112 +310,246 @@ class _ProductionScreenState extends State<ProductionScreen> {
   Widget _buildMaterialsSection() {
     return Card(
       elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        leading: const Icon(Icons.inventory_2, color: Colors.blue),
+        title: const Text(
+          'Aktuálny stav zásob',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          '${_materials.length} materiálov',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Aktuálny stav zásob',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline, size: 20),
+              onPressed: () => _showCreateMaterialDialog(context),
+              tooltip: 'Vytvoriť nový materiál',
+              color: Colors.blue,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
             ),
-            const SizedBox(height: 16),
-            if (_materials.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey[400]),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Žiadne materiály',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Pridajte materiály v sekcii Sklad',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              ..._materials.map((material) => _buildMaterialRow(material)),
+            IconButton(
+              icon: const Icon(Icons.inventory, size: 20),
+              onPressed: () => _showAddStockDialog(context),
+              tooltip: 'Doplniť zásoby',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildMaterialRow(material_model.Material material) {
-    final quantity = _getMaterialQuantity(material.id);
-    Color statusColor = Colors.green;
-    bool isLowStock = false;
-    
-    if (quantity == 0) {
-      statusColor = Colors.red;
-      isLowStock = true;
-    } else if (quantity < 100) {
-      statusColor = Colors.orange;
-      isLowStock = true;
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
         children: [
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  material.name,
-                  style: const TextStyle(fontSize: 16),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '${quantity.toStringAsFixed(2)} ${material.unit}',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: statusColor,
-                  ),
-                ),
-                if (isLowStock)
-                  Text(
-                    quantity == 0 ? 'KRITICKÉ!' : 'NÍZKE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: statusColor,
-                      fontWeight: FontWeight.bold,
+          if (_materials.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey[400]),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Žiadne materiály',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
-              ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Pridajte materiály pomocou tlačidla +',
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              child: Column(
+                children: _materials.map((material) {
+                  return _buildCompactMaterialCard(material);
+                }).toList(),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
+
+  Widget _buildCompactMaterialCard(material_model.Material material) {
+    return FutureBuilder<List<Warehouse>>(
+      future: Provider.of<ApiService>(context, listen: false).getWarehouse(),
+      builder: (context, snapshot) {
+        double materialQuantity = 0;
+        Color statusColor = Colors.green;
+        bool isLowStock = false;
+        IconData statusIcon = Icons.check_circle;
+        String statusText = 'OK';
+        double stockPercentage = 100.0;
+        const double warningThreshold = 100.0;
+        
+        if (snapshot.hasData) {
+          final item = snapshot.data!.firstWhere(
+            (w) => w.materialId == material.id,
+            orElse: () => Warehouse(
+              id: '',
+              materialId: material.id,
+              quantity: 0,
+            ),
+          );
+          materialQuantity = item.quantity;
+          
+          const double maxExpected = 500.0;
+          stockPercentage = (materialQuantity / maxExpected * 100).clamp(0.0, 100.0);
+          
+          if (materialQuantity == 0) {
+            statusColor = Colors.red.shade700;
+            isLowStock = true;
+            statusIcon = Icons.error_outline;
+            statusText = 'KRITICKÉ';
+            stockPercentage = 0;
+          } else if (materialQuantity < 50) {
+            statusColor = Colors.red.shade600;
+            isLowStock = true;
+            statusIcon = Icons.warning_amber_rounded;
+            statusText = 'KRITICKÉ';
+          } else if (materialQuantity < warningThreshold) {
+            statusColor = Colors.orange.shade700;
+            isLowStock = true;
+            statusIcon = Icons.warning_amber_rounded;
+            statusText = 'NÍZKE';
+          } else {
+            statusColor = Colors.green.shade700;
+            isLowStock = false;
+            statusIcon = Icons.check_circle_outline;
+            statusText = 'OK';
+          }
+        }
+        
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          elevation: isLowStock ? 3 : 1,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(
+              color: isLowStock ? statusColor.withOpacity(0.3) : Colors.grey.shade300,
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    statusIcon,
+                    color: statusColor,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              material.name,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              statusText,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            '${materialQuantity.toStringAsFixed(2)} ${material.unit}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: stockPercentage / 100,
+                                minHeight: 6,
+                                backgroundColor: Colors.grey.shade200,
+                                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${stockPercentage.toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: statusColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Removed _buildMaterialRow - replaced with _buildMaterialCard
 
   Widget _buildAlertsSection() {
     return Card(
@@ -1190,6 +1324,148 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 }
               },
               child: const Text('Uložiť'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCreateMaterialDialog(BuildContext context) async {
+    final nameController = TextEditingController();
+    final unitController = TextEditingController();
+    String selectedUnit = 'kg';
+
+    final commonUnits = ['kg', 'l', 'm³', 'ks', 'm²', 'm'];
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Vytvoriť nový materiál'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Názov materiálu *',
+                    border: OutlineInputBorder(),
+                    hintText: 'napr. Cement, Štrk 0/4',
+                    prefixIcon: Icon(Icons.label),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedUnit,
+                  decoration: const InputDecoration(
+                    labelText: 'Jednotka *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.straighten),
+                  ),
+                  items: commonUnits.map((unit) {
+                    return DropdownMenuItem(
+                      value: unit,
+                      child: Text(unit),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      selectedUnit = value ?? 'kg';
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: unitController,
+                  decoration: const InputDecoration(
+                    labelText: 'Vlastná jednotka (voliteľné)',
+                    border: OutlineInputBorder(),
+                    hintText: 'Ak chcete zadať inú jednotku',
+                    prefixIcon: Icon(Icons.edit),
+                  ),
+                  onChanged: (value) {
+                    if (value.isNotEmpty) {
+                      setDialogState(() {
+                        selectedUnit = value;
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Zrušiť'),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('Vytvoriť'),
+              onPressed: () async {
+                final name = nameController.text.trim();
+                final unit = unitController.text.trim().isNotEmpty 
+                    ? unitController.text.trim() 
+                    : selectedUnit;
+
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Zadajte názov materiálu'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
+                // Skontrolujeme, či už existuje
+                final existing = _materials.firstWhere(
+                  (m) => m.name.toLowerCase() == name.toLowerCase(),
+                  orElse: () => material_model.Material(
+                    id: '',
+                    name: '',
+                    unit: '',
+                  ),
+                );
+
+                if (existing.id.isNotEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Materiál "$name" už existuje'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
+                try {
+                  final apiService = Provider.of<ApiService>(context, listen: false);
+                  await apiService.createMaterial(name, unit);
+
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Materiál "$name" bol vytvorený'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Chyba pri vytváraní materiálu: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
             ),
           ],
         ),
