@@ -20,7 +20,15 @@ async function seedMaterials() {
   console.log('🌱 Začínam seed predvolených materiálov...\n');
 
   const pool = getRemotePool();
-  const db = getLocalDb();
+  let db = null;
+  
+  // Skúsime získať lokálnu databázu, ale ak to zlyhá, pokračujeme len s PostgreSQL
+  try {
+    db = getLocalDb();
+  } catch (error) {
+    console.log('⚠️  Lokálna SQLite databáza nie je dostupná, používam len PostgreSQL...\n');
+    db = null;
+  }
 
   try {
     if (pool) {
@@ -57,7 +65,7 @@ async function seedMaterials() {
       } finally {
         client.release();
       }
-    } else {
+    } else if (db) {
       // SQLite implementácia
       console.log('📦 Používam lokálnu SQLite databázu...\n');
       
@@ -81,6 +89,10 @@ async function seedMaterials() {
         db.prepare("INSERT INTO warehouse (id, material_id, quantity, synced) VALUES (?, ?, ?, 0)")
           .run(warehouseId, materialId, 0);
       }
+    } else {
+      console.log('❌ Žiadna databáza nie je dostupná!');
+      console.log('   Skontrolujte, či je nastavený DATABASE_URL v .env súbore alebo či je SQLite správne nainštalovaný.');
+      process.exit(1);
     }
 
     console.log('\n✅ Seed predvolených materiálov dokončený!');

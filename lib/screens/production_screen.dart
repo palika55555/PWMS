@@ -11,8 +11,49 @@ import '../models/material.dart' as material_model;
 import '../models/batch.dart';
 import '../services/api_service.dart';
 import 'production_form_screen.dart';
-import 'production_detail_screen.dart';
-import 'batch_detail_screen.dart';
+
+// Helper classes to match the provided code structure
+class Product {
+  final int id;
+  final String name;
+  final int quantity;
+
+  Product({required this.id, required this.name, required this.quantity});
+}
+
+class ProductionBatch {
+  final int? id;
+  final String batchNumber;
+  final String productName;
+  final int quantity;
+  final String productionDate;
+  final String? notes;
+  final String qualityStatus;
+  final String? qualityNotes;
+
+  ProductionBatch({
+    this.id,
+    required this.batchNumber,
+    required this.productName,
+    required this.quantity,
+    required this.productionDate,
+    this.notes,
+    this.qualityStatus = 'pending',
+    this.qualityNotes,
+  });
+}
+
+class Alert {
+  final String type;
+  final material_model.Material material;
+  final String message;
+
+  Alert({
+    required this.type,
+    required this.material,
+    required this.message,
+  });
+}
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -29,6 +70,13 @@ class _ProductionScreenState extends State<ProductionScreen> {
   List<Batch> _batches = [];
   Map<String, List<Batch>> _batchesByDay = {};
   List<Map<String, dynamic>> _alerts = [];
+  
+  // Helper lists matching provided code structure
+  List<Product> _products = [];
+  List<ProductionBatch> _recentBatches = [];
+  Map<String, List<ProductionBatch>> _batchesByDayFormatted = {};
+  List<Alert> _alertsFormatted = [];
+  
   bool _isLoading = true;
   bool _showByDays = true; // Zobrazenie podľa dní
 
@@ -60,6 +108,79 @@ class _ProductionScreenState extends State<ProductionScreen> {
         debugPrint('  - Material ID: ${item.materialId}, Quantity: ${item.quantity}');
       }
       
+      // Convert to helper objects matching provided code structure
+      final products = <Product>[];
+      final productMap = <String, int>{};
+      for (var production in productions) {
+        final typeName = production.productionTypeName ?? 'Neznámy';
+        productMap[typeName] = (productMap[typeName] ?? 0) + production.quantity.toInt();
+      }
+      int productId = 1;
+      for (var entry in productMap.entries) {
+        products.add(Product(
+          id: productId++,
+          name: entry.key,
+          quantity: entry.value,
+        ));
+      }
+      
+      // Convert batches to ProductionBatch
+      final recentBatches = <ProductionBatch>[];
+      for (var batch in batches.take(10)) {
+        final production = productions.firstWhere(
+          (p) => p.id == batch.productionId,
+          orElse: () => Production(
+            id: batch.productionId,
+            productionTypeId: '',
+            quantity: batch.quantity,
+          ),
+        );
+        recentBatches.add(ProductionBatch(
+          id: 1,
+          batchNumber: batch.batchNumber,
+          productName: production.productionTypeName ?? 'Neznámy',
+          quantity: batch.quantity.toInt(),
+          productionDate: batch.createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+          notes: null,
+          qualityStatus: batch.status,
+        ));
+      }
+      
+      // Convert batchesByDay
+      final batchesByDayFormatted = <String, List<ProductionBatch>>{};
+      for (var entry in batchesByDay.entries) {
+        final dayBatches = <ProductionBatch>[];
+        for (var batch in entry.value) {
+          final production = productions.firstWhere(
+            (p) => p.id == batch.productionId,
+            orElse: () => Production(
+              id: batch.productionId,
+              productionTypeId: '',
+              quantity: batch.quantity,
+            ),
+          );
+          dayBatches.add(ProductionBatch(
+            id: 1,
+            batchNumber: batch.batchNumber,
+            productName: production.productionTypeName ?? 'Neznámy',
+            quantity: batch.quantity.toInt(),
+            productionDate: batch.createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+            notes: null,
+            qualityStatus: batch.status,
+          ));
+        }
+        batchesByDayFormatted[entry.key] = dayBatches;
+      }
+      
+      // Convert alerts
+      final alertsFormatted = alerts.map((alertData) {
+        return Alert(
+          type: alertData['type'] as String,
+          material: alertData['material'] as material_model.Material,
+          message: alertData['message'] as String,
+        );
+      }).toList();
+      
       setState(() {
         _productions = productions;
         _productionTypes = types;
@@ -68,6 +189,10 @@ class _ProductionScreenState extends State<ProductionScreen> {
         _batches = batches;
         _batchesByDay = batchesByDay;
         _alerts = alerts;
+        _products = products;
+        _recentBatches = recentBatches;
+        _batchesByDayFormatted = batchesByDayFormatted;
+        _alertsFormatted = alertsFormatted;
         _isLoading = false;
       });
     } catch (e) {
@@ -93,50 +218,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
     return warehouseItem.quantity;
   }
 
-  Color _getMaterialStatusColor(double quantity) {
-    if (quantity == 0) return Colors.red;
-    if (quantity < 100) return Colors.orange;
-    return Colors.green;
-  }
-
-  Future<void> _deleteProduction(Production production) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Potvrdiť vymazanie'),
-        content: Text('Naozaj chcete vymazať výrobu "${production.productionTypeName}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Zrušiť'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Vymazať'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        final apiService = Provider.of<ApiService>(context, listen: false);
-        await apiService.deleteProduction(production.id);
-        _loadData();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Výroba bola vymazaná')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Chyba pri vymazávaní: $e')),
-          );
-        }
-      }
-    }
-  }
+  // Removed unused methods
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +262,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_alerts.isNotEmpty) ...[
+                    if (_alertsFormatted.isNotEmpty) ...[
                       _buildAlertsSection(),
                       const SizedBox(height: 16),
                     ],
@@ -336,7 +418,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 Icon(Icons.warning, color: Colors.red.shade700),
                 const SizedBox(width: 8),
                 Text(
-                  'Varovania (${_alerts.length})',
+                  'Varovania (${_alertsFormatted.length})',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -346,19 +428,19 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            ..._alerts.map((alert) => Padding(
+            ..._alertsFormatted.map((alert) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
                   Icon(
-                    alert['type'] == 'critical_stock' ? Icons.error : Icons.warning_amber,
-                    color: alert['type'] == 'critical_stock' ? Colors.red : Colors.orange,
+                    alert.type == 'critical_stock' ? Icons.error : Icons.warning_amber,
+                    color: alert.type == 'critical_stock' ? Colors.red : Colors.orange,
                     size: 20,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${(alert['material'] as material_model.Material).name}: ${alert['message']}',
+                      '${alert.material.name}: ${alert.message}',
                       style: const TextStyle(fontSize: 14),
                     ),
                   ),
@@ -372,9 +454,9 @@ class _ProductionScreenState extends State<ProductionScreen> {
   }
 
   Widget _buildProductionOverview() {
-    final totalQuantity = _productions.fold<double>(
+    final totalProducts = _products.fold<int>(
       0,
-      (sum, production) => sum + production.quantity,
+      (sum, product) => sum + product.quantity,
     );
 
     return Card(
@@ -397,7 +479,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 Expanded(
                   child: _buildStatCard(
                     'Celkom vyrobených',
-                    totalQuantity.toStringAsFixed(0),
+                    totalProducts.toString(),
                     Icons.inventory,
                     Colors.blue,
                   ),
@@ -405,8 +487,8 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: _buildStatCard(
-                    'Typy výroby',
-                    _productionTypes.length.toString(),
+                    'Typy produktov',
+                    _products.length.toString(),
                     Icons.category,
                     Colors.green,
                   ),
@@ -414,30 +496,26 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            ..._productionTypes.map((type) {
-              final typeProductions = _productions.where((p) => p.productionTypeId == type.id);
-              final typeQuantity = typeProductions.fold<double>(0, (sum, p) => sum + p.quantity);
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        type.name,
-                        style: const TextStyle(fontSize: 16),
-                      ),
+            ..._products.map((product) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      product.name,
+                      style: const TextStyle(fontSize: 16),
                     ),
-                    Text(
-                      '${typeQuantity.toStringAsFixed(0)} ks',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  ),
+                  Text(
+                    '${product.quantity} ks',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
-                ),
-              );
-            }),
+                  ),
+                ],
+              ),
+            )),
           ],
         ),
       ),
@@ -474,7 +552,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
   }
 
   Widget _buildProductionByDaysSection() {
-    if (_batchesByDay.isEmpty) {
+    if (_batchesByDayFormatted.isEmpty) {
       return Card(
         elevation: 2,
         child: Padding(
@@ -489,7 +567,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
       );
     }
 
-    final sortedDays = _batchesByDay.keys.toList()
+    final sortedDays = _batchesByDayFormatted.keys.toList()
       ..sort((a, b) => b.compareTo(a)); // Najnovšie dni prvé
 
     return Card(
@@ -507,19 +585,19 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            ...sortedDays.map((dayKey) => _buildDaySection(dayKey, _batchesByDay[dayKey]!)),
+            ...sortedDays.map((dayKey) => _buildDaySection(dayKey, _batchesByDayFormatted[dayKey]!)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDaySection(String dayKey, List<Batch> batches) {
+  Widget _buildDaySection(String dayKey, List<ProductionBatch> batches) {
     final date = DateTime.parse('$dayKey 00:00:00');
     final dayNames = ['Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota', 'Nedeľa'];
     final dayName = dayNames[date.weekday - 1];
     final dateStr = '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
-    final totalQuantity = batches.fold<double>(0, (sum, batch) => sum + batch.quantity);
+    final totalQuantity = batches.fold<int>(0, (sum, batch) => sum + batch.quantity);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -531,7 +609,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text(
-          '${batches.length} šarží, celkom ${totalQuantity.toStringAsFixed(0)} ks',
+          '${batches.length} šarží, celkom $totalQuantity ks',
         ),
         trailing: IconButton(
           icon: const Icon(Icons.qr_code),
@@ -552,7 +630,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
   }
 
   Widget _buildRecentProductionSection() {
-    if (_productions.isEmpty) {
+    if (_recentBatches.isEmpty) {
       return Card(
         elevation: 2,
         child: Padding(
@@ -582,111 +660,115 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            ..._productions.take(10).map((production) => _buildProductionCard(production)),
+            ..._recentBatches.map((batch) => _buildBatchCard(batch)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProductionCard(Production production) {
-    final batch = _batches.firstWhere(
-      (b) => b.productionId == production.id,
-      orElse: () => Batch(
-        id: '',
-        productionId: production.id,
-        batchNumber: 'N/A',
-        quantity: 0,
-      ),
-    );
+  Widget _buildBatchCard(ProductionBatch batch) {
+    final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
+    final date = DateTime.tryParse(batch.productionDate);
+
+    Color qualityColor = Colors.grey;
+    IconData qualityIcon = Icons.pending;
+    String qualityText = 'Čaká na kontrolu';
+    
+    switch (batch.qualityStatus) {
+      case 'passed':
+        qualityColor = Colors.green;
+        qualityIcon = Icons.check_circle;
+        qualityText = 'Schválené';
+        break;
+      case 'failed':
+        qualityColor = Colors.red;
+        qualityIcon = Icons.cancel;
+        qualityText = 'Zamietnuté';
+        break;
+      case 'warning':
+        qualityColor = Colors.orange;
+        qualityIcon = Icons.warning;
+        qualityText = 'Varovanie';
+        break;
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.green.shade400, Colors.green.shade600],
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(
-              production.quantity.toStringAsFixed(0),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
+      child: ExpansionTile(
+        leading: Icon(qualityIcon, color: qualityColor),
         title: Text(
-          production.productionTypeName ?? 'Neznámy typ',
+          batch.productName,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (batch.batchNumber != 'N/A')
-              Text('Šarža: ${batch.batchNumber}'),
             Text(
-              production.productionDate != null
-                  ? DateFormat('dd.MM.yyyy HH:mm').format(production.productionDate!)
-                  : 'N/A',
+              'Šarža: ${batch.batchNumber}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+            Text(
+              date != null ? dateFormat.format(date) : batch.productionDate,
+              style: const TextStyle(fontSize: 12),
             ),
           ],
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.arrow_forward),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ProductionDetailScreen(production: production),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '${batch.quantity} ks',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
               ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBatchCard(Batch batch) {
-    final production = _productions.firstWhere(
-      (p) => p.id == batch.productionId,
-      orElse: () => Production(
-        id: batch.productionId,
-        productionTypeId: '',
-        quantity: batch.quantity,
-      ),
-    );
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(Icons.inventory_2, color: Colors.purple),
-        title: Text(
-          production.productionTypeName ?? 'Neznámy typ',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text('Šarža: ${batch.batchNumber}'),
-        trailing: Text(
-          '${batch.quantity.toStringAsFixed(0)} ks',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => BatchDetailScreen(batch: batch),
             ),
-          );
-        },
+            Text(
+              qualityText,
+              style: TextStyle(
+                fontSize: 10,
+                color: qualityColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (batch.notes != null && batch.notes!.isNotEmpty) ...[
+                  Text(
+                    'Poznámky: ${batch.notes}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (batch.qualityNotes != null && batch.qualityNotes!.isNotEmpty) ...[
+                  Text(
+                    'Kvalita: ${batch.qualityNotes}',
+                    style: TextStyle(fontSize: 14, color: qualityColor),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => _showQualityDialog(context, batch),
+                      icon: const Icon(Icons.verified_user, size: 18),
+                      label: const Text('Kontrola kvality'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -895,32 +977,35 @@ class _ProductionScreenState extends State<ProductionScreen> {
   Future<void> _showQRCodeDialog(
     BuildContext context,
     DateTime date,
-    List<Batch> batches,
+    List<ProductionBatch> batches,
   ) async {
     final dateStr = '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
-    final totalQuantity = batches.fold<double>(0, (sum, batch) => sum + batch.quantity);
-    final productsSummary = <String, double>{};
+    final totalQuantity = batches.fold<int>(0, (sum, batch) => sum + batch.quantity);
+    final productsSummary = <String, int>{};
     
     for (var batch in batches) {
-      final production = _productions.firstWhere(
-        (p) => p.id == batch.productionId,
-        orElse: () => Production(
-          id: batch.productionId,
-          productionTypeId: '',
-          quantity: batch.quantity,
-        ),
-      );
-      final productName = production.productionTypeName ?? 'Neznámy';
-      productsSummary[productName] = (productsSummary[productName] ?? 0) + batch.quantity;
+      productsSummary[batch.productName] = 
+          (productsSummary[batch.productName] ?? 0) + batch.quantity;
     }
 
-    final qrData = jsonEncode({
+    final qrDataMap = {
       'date': date.toIso8601String(),
       'batches': batches.length,
       'total_quantity': totalQuantity,
       'products': productsSummary,
       'batch_numbers': batches.map((b) => b.batchNumber).toList(),
-    });
+    };
+    
+    String qrData;
+    if (kIsWeb) {
+      // Import universal_html if needed
+      final baseUrl = Uri.base.origin;
+      final encodedData = base64Encode(utf8.encode(jsonEncode(qrDataMap)));
+      qrData = '$baseUrl/production?data=$encodedData';
+    } else {
+      final encodedData = base64Encode(utf8.encode(jsonEncode(qrDataMap)));
+      qrData = 'https://your-app.vercel.app/production?data=$encodedData';
+    }
 
     await showDialog(
       context: context,
@@ -956,7 +1041,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text('Počet šarží: ${batches.length}'),
-                Text('Celkom vyrobených: ${totalQuantity.toStringAsFixed(0)} ks'),
+                Text('Celkom vyrobených: $totalQuantity ks'),
                 const SizedBox(height: 8),
                 const Divider(),
                 const Text(
@@ -970,7 +1055,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(child: Text(entry.key)),
-                        Text('${entry.value.toStringAsFixed(0)} ks', 
+                        Text('${entry.value} ks', 
                           style: const TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
@@ -989,45 +1074,114 @@ class _ProductionScreenState extends State<ProductionScreen> {
       ),
     );
   }
-}
 
-class _StatItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
+  Future<void> _showQualityDialog(BuildContext context, ProductionBatch batch) async {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    String selectedStatus = batch.qualityStatus;
+    final notesController = TextEditingController(text: batch.qualityNotes ?? '');
 
-  const _StatItem({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: color),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey.shade700,
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Kontrola kvality'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Šarža: ${batch.batchNumber}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                const Text('Stav kvality:'),
+                RadioListTile<String>(
+                  title: const Text('Čaká na kontrolu'),
+                  value: 'pending',
+                  groupValue: selectedStatus,
+                  onChanged: (value) {
+                    setDialogState(() => selectedStatus = value!);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text('Schválené', style: TextStyle(color: Colors.green)),
+                  value: 'passed',
+                  groupValue: selectedStatus,
+                  onChanged: (value) {
+                    setDialogState(() => selectedStatus = value!);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text('Varovanie', style: TextStyle(color: Colors.orange)),
+                  value: 'warning',
+                  groupValue: selectedStatus,
+                  onChanged: (value) {
+                    setDialogState(() => selectedStatus = value!);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text('Zamietnuté', style: TextStyle(color: Colors.red)),
+                  value: 'failed',
+                  groupValue: selectedStatus,
+                  onChanged: (value) {
+                    setDialogState(() => selectedStatus = value!);
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: notesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Poznámky k kvalite',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+              ],
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Zrušiť'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                // Find the actual batch ID from the batches list
+                final actualBatch = _batches.firstWhere(
+                  (b) => b.batchNumber == batch.batchNumber,
+                  orElse: () => Batch(
+                    id: '',
+                    productionId: '',
+                    batchNumber: batch.batchNumber,
+                    quantity: batch.quantity.toDouble(),
+                  ),
+                );
+                
+                if (actualBatch.id.isNotEmpty) {
+                  final result = await apiService.updateBatchQualityStatus(
+                    actualBatch.id,
+                    selectedStatus,
+                    notes: notesController.text.isEmpty ? null : notesController.text,
+                  );
+
+                  if (result && context.mounted) {
+                    Navigator.pop(context);
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Stav kvality bol aktualizovaný'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('Uložiť'),
+            ),
+          ],
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
+
