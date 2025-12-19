@@ -1,9 +1,21 @@
 {
   "name": "pwms",
   "version": "1.0.0",
+  "description": "PWMS Backend API for Railway",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
     "install-flutter": "chmod +x install_flutter.sh && bash install_flutter.sh",
     "build": "chmod +x build_vercel.sh && bash build_vercel.sh"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "pg": "^8.11.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
 

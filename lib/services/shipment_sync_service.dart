@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../database/database_helper.dart';
+import '../config/api_config.dart';
 
 class ShipmentSyncService {
   final DatabaseHelper _db = DatabaseHelper.instance;
-  static const String API_BASE_URL = 'https://pwms.vercel.app/api/shipment';
+  static String get API_BASE_URL => ApiConfig.getShipmentUrl();
 
   // Synchronizácia expedovania z API do lokálnej databázy
   Future<void> syncShipmentFromAPI(String batchNumber) async {

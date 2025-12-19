@@ -3,10 +3,11 @@ import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 import '../database/database_helper.dart';
 import '../models/quality_check.dart';
+import '../config/api_config.dart';
 
 class QualitySyncService {
   final DatabaseHelper _db = DatabaseHelper.instance;
-  static const String API_BASE_URL = 'https://pwms.vercel.app/api/quality';
+  static String get API_BASE_URL => ApiConfig.getQualityUrl();
 
   // Synchronizácia kvality z API do lokálnej databázy
   Future<void> syncQualityFromAPI(String batchNumber) async {

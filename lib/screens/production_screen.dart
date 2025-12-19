@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:convert';
 import 'package:universal_html/html.dart' as html;
+import 'package:http/http.dart' as http;
 import '../services/material_service.dart';
 import '../services/production_service.dart';
 import '../services/alert_service.dart';
@@ -762,12 +763,20 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 ],
                 const SizedBox(height: 8),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     TextButton.icon(
                       onPressed: () => _showQualityDialog(context, batch),
                       icon: const Icon(Icons.verified_user, size: 18),
                       label: const Text('Kontrola kvality'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => _showShipmentDialog(context, batch),
+                      icon: const Icon(Icons.local_shipping, size: 18),
+                      label: const Text('Expedovať'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.teal,
+                      ),
                     ),
                   ],
                 ),
@@ -1082,6 +1091,118 @@ class _ProductionScreenState extends State<ProductionScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showShipmentDialog(BuildContext context, ProductionBatch batch) async {
+    // Získať aktuálny stav expedovania z API
+    bool isShipped = false;
+    try {
+      final shipment = await _shipmentSyncService.getShipmentFromAPI(batch.batchNumber);
+      if (shipment != null) {
+        isShipped = shipment['shipped'] as bool? ?? false;
+      }
+    } catch (e) {
+      print('Error loading shipment status: $e');
+    }
+
+    final notesController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isShipped ? 'Zrušiť expedovanie' : 'Expedovať šaržu'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isShipped 
+                    ? 'Naozaj chcete zrušiť expedovanie šarže ${batch.batchNumber}?'
+                    : 'Naozaj chcete expedovať šaržu ${batch.batchNumber}?',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Poznámky (voliteľné)',
+                  hintText: 'Napríklad: Adresa doručenia, dopravca...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušiť'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                // Aktualizovať expedovanie cez API
+                final response = await http.post(
+                  Uri.parse('https://pwms.vercel.app/api/shipment'),
+                  headers: {'Content-Type': 'application/json'},
+                  body: jsonEncode({
+                    'batchNumber': batch.batchNumber,
+                    'shipped': !isShipped,
+                    'shippedBy': 'Desktop App',
+                    'notes': notesController.text.trim().isEmpty 
+                        ? null 
+                        : notesController.text.trim(),
+                  }),
+                );
+
+                if (response.statusCode == 200 && context.mounted) {
+                  final data = jsonDecode(response.body);
+                  if (data['success'] == true) {
+                    // Registrovať zmenu pre real-time sync
+                    _realtimeSync.registerChange(
+                      type: 'shipment',
+                      batchNumber: batch.batchNumber,
+                      changeData: {
+                        'shipped': !isShipped,
+                        'shippedDate': data['data']?['shippedDate'],
+                      },
+                      source: 'app',
+                    );
+
+                    Navigator.pop(context);
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(!isShipped 
+                            ? 'Šarža ${batch.batchNumber} bola expedovaná' 
+                            : 'Expedovanie šarže ${batch.batchNumber} bolo zrušené'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Chyba pri aktualizácii expedovania: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isShipped ? Colors.grey : Colors.teal,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(isShipped ? 'Zrušiť expedovanie' : 'Expedovať'),
+          ),
+        ],
       ),
     );
   }
