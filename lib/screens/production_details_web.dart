@@ -25,9 +25,12 @@ class _ProductionDetailsWebState extends State<ProductionDetailsWeb> {
   @override
   void initState() {
     super.initState();
-    // Načítať kvalitu asynchrónne po tom, ako sa widget mountne
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadQualityStatuses();
+    // Načítať kvalitu asynchrónne po tom, ako sa widget úplne načíta
+    // Použiť Future.microtask namiesto addPostFrameCallback pre lepšiu kompatibilitu
+    Future.microtask(() {
+      if (mounted) {
+        _loadQualityStatuses();
+      }
     });
   }
 
