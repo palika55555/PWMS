@@ -348,6 +348,20 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
         }
         
         _supplierController.text = draft.supplierName ?? '';
+        _draftWarehouseId = draft.warehouseId;
+        if (draft.warehouseId == null) {
+          _selectedWarehouse = null;
+        } else if (_warehouses.isNotEmpty) {
+          try {
+            _selectedWarehouse = _warehouses.firstWhere((w) => w.id == draft.warehouseId);
+            _draftWarehouseId = null;
+          } catch (_) {
+            _selectedWarehouse = null;
+          }
+        } else {
+          // Warehouses not loaded yet; selection will be applied in _loadData()
+          _selectedWarehouse = null;
+        }
         _deliveryNoteNumberController.text = draft.deliveryNoteNumber ?? '';
         _receiptDate = draft.receiptDate;
         _deliveryDate = draft.deliveryDate;
@@ -436,6 +450,7 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
         updatedAt: DateTime.now(),
         selectedSupplier: _selectedSupplier,
         supplierName: _supplierController.text.isEmpty ? null : _supplierController.text,
+        warehouseId: _selectedWarehouse?.id,
         deliveryNoteNumber: _deliveryNoteNumberController.text.isEmpty 
             ? null 
             : _deliveryNoteNumberController.text,
@@ -535,6 +550,22 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
       _materials = uniqueMaterials.values.toList();
       _suppliers = suppliers;
       _warehouses = warehouses;
+      
+      // Apply warehouse from draft if present (draft may be loaded before warehouses)
+      if (_draftWarehouseId != null) {
+        try {
+          _selectedWarehouse = _warehouses.firstWhere((w) => w.id == _draftWarehouseId);
+        } catch (_) {
+          _selectedWarehouse = null;
+        }
+        _draftWarehouseId = null;
+      }
+
+      // If there is exactly one active warehouse, preselect it
+      if (_selectedWarehouse == null && _warehouses.length == 1) {
+        _selectedWarehouse = _warehouses.first;
+      }
+
       _loading = false;
     });
   }
@@ -1171,6 +1202,36 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
                         prefixIcon: Icon(Icons.description),
                         hintText: 'Zadajte číslo dodacieho listu',
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    // Warehouse
+                    DropdownButtonFormField<Warehouse>(
+                      value: _selectedWarehouse,
+                      decoration: const InputDecoration(
+                        labelText: 'Sklad *',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.store),
+                        helperText: 'Vyberte sklad, do ktorého príjem naskladníte',
+                      ),
+                      items: _warehouses.map((warehouse) {
+                        final label = (warehouse.code != null && warehouse.code!.trim().isNotEmpty)
+                            ? '${warehouse.name} (${warehouse.code})'
+                            : warehouse.name;
+                        return DropdownMenuItem<Warehouse>(
+                          value: warehouse,
+                          child: Text(label, overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: (warehouse) {
+                        setState(() {
+                          _selectedWarehouse = warehouse;
+                        });
+                      },
+                      validator: (value) {
+                        if (value == null) return 'Prosím vyberte sklad';
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 16),
                     const Divider(),
@@ -2134,6 +2195,7 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
       updatedAt: DateTime.now(),
       selectedSupplier: draft.selectedSupplier,
       supplierName: draft.supplierName,
+      warehouseId: draft.warehouseId,
       deliveryNoteNumber: draft.deliveryNoteNumber,
       receiptDate: draft.receiptDate,
       deliveryDate: draft.deliveryDate,
@@ -2183,6 +2245,7 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
     Supplier? mergedSupplier = draftsToMerge.first.selectedSupplier;
     String? mergedSupplierName = draftsToMerge.first.supplierName;
     double mergedVatRate = draftsToMerge.first.globalVatRate;
+    int? mergedWarehouseId = draftsToMerge.first.warehouseId;
     
     for (final draft in draftsToMerge) {
       allItems.addAll(draft.items);
@@ -2196,6 +2259,7 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
       if (draft.globalVatRate != 20.0) {
         mergedVatRate = draft.globalVatRate;
       }
+      mergedWarehouseId ??= draft.warehouseId;
     }
     
     // Load merged draft
@@ -2206,6 +2270,7 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
       updatedAt: DateTime.now(),
       selectedSupplier: mergedSupplier,
       supplierName: mergedSupplierName,
+      warehouseId: mergedWarehouseId,
       deliveryNoteNumber: null,
       receiptDate: latestDate,
       deliveryDate: null,
