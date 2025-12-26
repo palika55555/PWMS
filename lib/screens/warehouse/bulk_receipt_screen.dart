@@ -69,6 +69,7 @@ class BulkReceiptDraft {
   final DateTime? updatedAt;
   final Supplier? selectedSupplier;
   final String? supplierName;
+  final int? warehouseId;
   final String? deliveryNoteNumber;
   final DateTime receiptDate;
   final DateTime? deliveryDate;
@@ -82,6 +83,7 @@ class BulkReceiptDraft {
     this.updatedAt,
     this.selectedSupplier,
     this.supplierName,
+    this.warehouseId,
     this.deliveryNoteNumber,
     required this.receiptDate,
     this.deliveryDate,
@@ -97,6 +99,7 @@ class BulkReceiptDraft {
       'updatedAt': updatedAt?.toIso8601String(),
       'supplierId': selectedSupplier?.id,
       'supplierName': supplierName,
+      'warehouseId': warehouseId,
       'deliveryNoteNumber': deliveryNoteNumber,
       'receiptDate': receiptDate.toIso8601String(),
       'deliveryDate': deliveryDate?.toIso8601String(),
@@ -113,6 +116,7 @@ class BulkReceiptDraft {
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
       selectedSupplier: supplier,
       supplierName: json['supplierName'] as String?,
+      warehouseId: json['warehouseId'] as int?,
       deliveryNoteNumber: json['deliveryNoteNumber'] as String?,
       receiptDate: DateTime.parse(json['receiptDate'] as String),
       deliveryDate: json['deliveryDate'] != null ? DateTime.parse(json['deliveryDate'] as String) : null,
@@ -137,6 +141,7 @@ class _BulkReceiptScreenState extends State<BulkReceiptScreen> {
   Supplier? _selectedSupplier;
   final _supplierController = TextEditingController();
   Warehouse? _selectedWarehouse;
+  int? _draftWarehouseId;
   final _deliveryNoteNumberController = TextEditingController();
   DateTime _receiptDate = DateTime.now();
   DateTime? _deliveryDate;

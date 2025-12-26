@@ -36,7 +36,7 @@ class LocalDatabase {
 
     return await openDatabase(
       path,
-      version: 19, // Add warehouse_id to stock_movements
+      version: 20, // Add default_vat_rate to suppliers
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -180,6 +180,7 @@ class LocalDatabase {
             contact_person TEXT,
             payment_terms TEXT,
             notes TEXT,
+            default_vat_rate REAL,
             synced INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -214,6 +215,16 @@ class LocalDatabase {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_materials_plu ON materials(plu_code)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_materials_ean ON materials(ean_code)');
       } catch (e) {
+        print('Migration note: $e');
+      }
+    }
+
+    if (oldVersion < 20) {
+      // Add default VAT rate per supplier
+      try {
+        await db.execute('ALTER TABLE suppliers ADD COLUMN default_vat_rate REAL');
+      } catch (e) {
+        // Column might already exist, ignore error
         print('Migration note: $e');
       }
     }
@@ -917,6 +928,7 @@ class LocalDatabase {
         contact_person TEXT,
         payment_terms TEXT,
         notes TEXT,
+        default_vat_rate REAL,
         synced INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
