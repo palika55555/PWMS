@@ -1407,7 +1407,7 @@ class _CreateSupplierScreenState extends State<CreateSupplierScreen> {
       }
     }
   }
-
+//-------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1701,73 +1701,125 @@ class _CreateSupplierScreenState extends State<CreateSupplierScreen> {
       ),
     );
   }
-
+//--------------------------------
   Widget _buildTextFieldWithLoader(
-    TextEditingController controller,
-    String label,
-    IconData icon,
-    bool isLoading,
-  ) {
-    return Card(
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
-            prefixIcon: Icon(icon),
-            suffixIcon: isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: Padding(
-                      padding: EdgeInsets.all(12),
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : null,
-          ),
+  TextEditingController controller,
+  String label,
+  IconData icon,
+  bool isLoading,
+) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(
+          icon,
+          color: Colors.blueGrey.shade600,
         ),
-      ),
-    );
-  }
 
-  Widget _buildTextField(
-    TextEditingController controller,
-    String label,
-    IconData icon, {
-    TextInputType? keyboardType,
-    int maxLines = 1,
-    String? Function(String?)? validator,
-  }) {
-    return Card(
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
-            prefixIcon: Icon(icon),
+        // 🔹 moderný "filled" vzhľad
+        filled: true,
+        fillColor: Colors.grey.shade100,
+
+        // 🔹 jemné zaoblenie
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+
+        // 🔹 focus border
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: Colors.blue.shade400,
+            width: 1.5,
           ),
-          keyboardType: keyboardType,
-          maxLines: maxLines,
-          validator: validator,
+        ),
+
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+
+        // 🔹 loader ako suffix
+        suffixIcon: isLoading
+            ? SizedBox(
+                width: 24,
+                height: 24,
+                child: Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue.shade400,
+                  ),
+                ),
+              )
+            : null,
+      ),
+    ),
+  );
+}
+
+//-----------------------------------
+  Widget _buildTextField(
+  TextEditingController controller,
+  String label,
+  IconData icon, {
+  TextInputType? keyboardType,
+  int maxLines = 1,
+  String? Function(String?)? validator,
+}) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(
+          icon,
+          color: Colors.blueGrey.shade600,
+        ),
+
+        // 🔹 moderný "filled" vzhľad
+        filled: true,
+        fillColor: Colors.grey.shade100,
+
+        // 🔹 jemné zaoblenie
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+
+        // 🔹 focus border
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: Colors.blue.shade400,
+            width: 1.5,
+          ),
+        ),
+
+        // 🔹 error border
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(
+            color: Colors.redAccent,
+          ),
+        ),
+
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 
+}

@@ -15,6 +15,7 @@ class CreateWarehouseScreen extends StatefulWidget {
 
 class _CreateWarehouseScreenState extends State<CreateWarehouseScreen> {
   final _formKey = GlobalKey<FormState>();
+
   final _nameController = TextEditingController();
   final _codeController = TextEditingController();
   final _addressController = TextEditingController();
@@ -25,24 +26,26 @@ class _CreateWarehouseScreenState extends State<CreateWarehouseScreen> {
   final _emailController = TextEditingController();
   final _managerController = TextEditingController();
   final _notesController = TextEditingController();
+
   bool _loading = false;
   bool _isActive = true;
 
   @override
   void initState() {
     super.initState();
-    if (widget.warehouse != null) {
-      _nameController.text = widget.warehouse!.name;
-      _codeController.text = widget.warehouse!.code ?? '';
-      _addressController.text = widget.warehouse!.address ?? '';
-      _cityController.text = widget.warehouse!.city ?? '';
-      _zipCodeController.text = widget.warehouse!.zipCode ?? '';
-      _countryController.text = widget.warehouse!.country ?? 'Slovensko';
-      _phoneController.text = widget.warehouse!.phone ?? '';
-      _emailController.text = widget.warehouse!.email ?? '';
-      _managerController.text = widget.warehouse!.manager ?? '';
-      _notesController.text = widget.warehouse!.notes ?? '';
-      _isActive = widget.warehouse!.isActive;
+    final w = widget.warehouse;
+    if (w != null) {
+      _nameController.text = w.name;
+      _codeController.text = w.code ?? '';
+      _addressController.text = w.address ?? '';
+      _cityController.text = w.city ?? '';
+      _zipCodeController.text = w.zipCode ?? '';
+      _countryController.text = w.country ?? 'Slovensko';
+      _phoneController.text = w.phone ?? '';
+      _emailController.text = w.email ?? '';
+      _managerController.text = w.manager ?? '';
+      _notesController.text = w.notes ?? '';
+      _isActive = w.isActive;
     }
   }
 
@@ -62,13 +65,9 @@ class _CreateWarehouseScreenState extends State<CreateWarehouseScreen> {
   }
 
   Future<void> _saveWarehouse() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _loading = true;
-    });
+    setState(() => _loading = true);
 
     try {
       final dbProvider = Provider.of<DatabaseProvider>(context, listen: false);
@@ -97,64 +96,61 @@ class _CreateWarehouseScreenState extends State<CreateWarehouseScreen> {
         await dbProvider.updateWarehouse(warehouse);
       }
 
-      if (mounted) {
-        final mediaQuery = MediaQuery.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.warehouse == null 
-                ? 'Sklad bol úspešne vytvorený'
-                : 'Sklad bol úspešne upravený'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(
-              bottom: mediaQuery.size.height - mediaQuery.padding.top - 60,
-              left: 16,
-              right: 16,
-            ),
-          ),
-        );
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      if (mounted) {
-        final mediaQuery = MediaQuery.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Chyba: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(
-              bottom: mediaQuery.size.height - mediaQuery.padding.top - 60,
-              left: 16,
-              right: 16,
-            ),
-          ),
-        );
-      }
+      if (mounted) Navigator.pop(context, true);
     } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    InputDecoration decoration(String label, IconData icon) =>
+        InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          filled: true,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        );
+
+    Widget section(String title, List<Widget> children) => Card(
+          elevation: 0,
+          margin: const EdgeInsets.only(bottom: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 16),
+                ...children,
+              ],
+            ),
+          ),
+        );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.warehouse == null ? 'Nový sklad' : 'Upraviť sklad'),
         actions: [
           if (widget.warehouse != null)
             IconButton(
-              icon: const Icon(Icons.delete),
+              icon: const Icon(Icons.delete_outline),
               onPressed: () async {
                 final confirm = await showDialog<bool>(
                   context: context,
-                  builder: (context) => AlertDialog(
+                  builder: (_) => AlertDialog(
                     title: const Text('Vymazať sklad'),
-                    content: Text('Naozaj chcete vymazať sklad "${widget.warehouse!.name}"?'),
+                    content: Text(
+                        'Naozaj chcete vymazať sklad "${widget.warehouse!.name}"?'),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(context, false),
@@ -162,7 +158,8 @@ class _CreateWarehouseScreenState extends State<CreateWarehouseScreen> {
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(context, true),
-                        style: TextButton.styleFrom(foregroundColor: Colors.red),
+                        style: TextButton.styleFrom(
+                            foregroundColor: Colors.red),
                         child: const Text('Vymazať'),
                       ),
                     ],
@@ -170,39 +167,9 @@ class _CreateWarehouseScreenState extends State<CreateWarehouseScreen> {
                 );
 
                 if (confirm == true && mounted) {
-                  try {
-                    final dbProvider = Provider.of<DatabaseProvider>(context, listen: false);
-                    await dbProvider.deleteWarehouse(widget.warehouse!.id!);
-                    
-                    final mediaQuery = MediaQuery.of(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Sklad bol úspešne vymazaný'),
-                        backgroundColor: Colors.green,
-                        behavior: SnackBarBehavior.floating,
-                        margin: EdgeInsets.only(
-                          bottom: mediaQuery.size.height - mediaQuery.padding.top - 60,
-                          left: 16,
-                          right: 16,
-                        ),
-                      ),
-                    );
-                    Navigator.pop(context, true);
-                  } catch (e) {
-                    final mediaQuery = MediaQuery.of(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Chyba pri vymazávaní: $e'),
-                        backgroundColor: Colors.red,
-                        behavior: SnackBarBehavior.floating,
-                        margin: EdgeInsets.only(
-                          bottom: mediaQuery.size.height - mediaQuery.padding.top - 60,
-                          left: 16,
-                          right: 16,
-                        ),
-                      ),
-                    );
-                  }
+                  final db = Provider.of<DatabaseProvider>(context, listen: false);
+                  await db.deleteWarehouse(widget.warehouse!.id!);
+                  Navigator.pop(context, true);
                 }
               },
             ),
@@ -213,144 +180,93 @@ class _CreateWarehouseScreenState extends State<CreateWarehouseScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Názov skladu *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.warehouse),
+            section('Základné informácie', [
+              TextFormField(
+                controller: _nameController,
+                decoration: decoration('Názov skladu *', Icons.warehouse),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Povinné pole' : null,
               ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Prosím zadajte názov skladu';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _codeController,
-              decoration: const InputDecoration(
-                labelText: 'Kód skladu',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.qr_code),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _codeController,
+                decoration: decoration('Kód skladu', Icons.qr_code),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _addressController,
-              decoration: const InputDecoration(
-                labelText: 'Adresa',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.location_on),
+            ]),
+            section('Adresa', [
+              TextFormField(
+                controller: _addressController,
+                decoration: decoration('Adresa', Icons.location_on),
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextFormField(
-                    controller: _cityController,
-                    decoration: const InputDecoration(
-                      labelText: 'Mesto',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.location_city),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _cityController,
+                      decoration: decoration('Mesto', Icons.location_city),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
-                    controller: _zipCodeController,
-                    decoration: const InputDecoration(
-                      labelText: 'PSČ',
-                      border: OutlineInputBorder(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _zipCodeController,
+                      decoration: decoration('PSČ', Icons.local_post_office),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _countryController,
-              decoration: const InputDecoration(
-                labelText: 'Krajina',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.public),
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _phoneController,
-              decoration: const InputDecoration(
-                labelText: 'Telefón',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.phone),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _countryController,
+                decoration: decoration('Krajina', Icons.public),
               ),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.email),
+            ]),
+            section('Kontakt', [
+              TextFormField(
+                controller: _phoneController,
+                decoration: decoration('Telefón', Icons.phone),
               ),
-              keyboardType: TextInputType.emailAddress,
-              validator: (value) {
-                if (value != null && value.isNotEmpty) {
-                  if (!value.contains('@')) {
-                    return 'Prosím zadajte platnú emailovú adresu';
-                  }
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _managerController,
-              decoration: const InputDecoration(
-                labelText: 'Správca skladu',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _emailController,
+                decoration: decoration('Email', Icons.email),
               ),
-            ),
-            const SizedBox(height: 16),
-            SwitchListTile(
-              title: const Text('Aktívny sklad'),
-              subtitle: const Text('Neaktívne sklady sa nezobrazujú v zozname'),
-              value: _isActive,
-              onChanged: (value) {
-                setState(() {
-                  _isActive = value;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _notesController,
-              decoration: const InputDecoration(
-                labelText: 'Poznámky',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.note),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _managerController,
+                decoration: decoration('Správca skladu', Icons.person),
               ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 32),
+            ]),
+            section('Nastavenia', [
+              SwitchListTile(
+                value: _isActive,
+                onChanged: (v) => setState(() => _isActive = v),
+                title: const Text('Aktívny sklad'),
+                subtitle: const Text(
+                    'Neaktívne sklady sa nezobrazujú v zozname'),
+              ),
+            ]),
+            section('Poznámky', [
+              TextFormField(
+                controller: _notesController,
+                maxLines: 3,
+                decoration: decoration('Interné poznámky', Icons.note),
+              ),
+            ]),
+            const SizedBox(height: 8),
             ElevatedButton(
               onPressed: _loading ? null : _saveWarehouse,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
               ),
               child: _loading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(widget.warehouse == null ? 'Vytvoriť sklad' : 'Uložiť zmeny'),
+                  ? const CircularProgressIndicator()
+                  : Text(widget.warehouse == null
+                      ? 'Vytvoriť sklad'
+                      : 'Uložiť zmeny'),
             ),
           ],
         ),
@@ -358,4 +274,3 @@ class _CreateWarehouseScreenState extends State<CreateWarehouseScreen> {
     );
   }
 }
-

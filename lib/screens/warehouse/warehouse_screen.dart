@@ -1090,6 +1090,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
               DropdownMenuItem(value: 'warehouse', child: Text('Sklad')),
               DropdownMenuItem(value: 'production', child: Text('Výroba')),
               DropdownMenuItem(value: 'retail', child: Text('Maloobchod')),
+              DropdownMenuItem(value: 'overhead', child: Text('Režijný')),
             ],
             onChanged: (value) {
               setDialogState(() {
@@ -2329,6 +2330,16 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                         Icon(Icons.store, size: 20, color: Colors.orange),
                         const SizedBox(width: 8),
                         const Text('Maloobchod'),
+                      ],
+                    ),
+                  ),
+                  DropdownMenuItem<String?>(
+                    value: 'overhead',
+                    child: Row(
+                      children: [
+                        Icon(Icons.storage, size: 20, color: const Color.fromARGB(255, 33, 199, 69)),
+                        const SizedBox(width: 8),
+                        const Text('Režijný'),
                       ],
                     ),
                   ),
