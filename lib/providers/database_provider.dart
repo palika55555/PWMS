@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart' hide Batch;
+import 'dart:convert';
 import '../database/local_database.dart';
 import '../models/models.dart';
 import '../services/receipt_number_service.dart';
@@ -8,6 +9,16 @@ import '../services/sync_queue_service.dart';
 class DatabaseProvider with ChangeNotifier {
   final LocalDatabase _db = LocalDatabase.instance;
   final SyncQueueService _syncQueue = SyncQueueService();
+
+  int _revision = 0;
+  int get revision => _revision;
+
+  /// Forces listeners (screens) to reload their data from DB.
+  /// Used for Ctrl+R and for auto-refresh after inserts/updates.
+  void signalRefresh() {
+    _revision++;
+    notifyListeners();
+  }
   
   Map<String, dynamic> _withSynced0(Map<String, dynamic> map) {
     final m = Map<String, dynamic>.from(map);
@@ -18,6 +29,54 @@ class DatabaseProvider with ChangeNotifier {
   // Expose database for advanced queries
   Future<Database> getDatabase() async {
     return await _db.database;
+  }
+
+  // Draft documents (offline/local only)
+  Future<int> saveDraftDocument({
+    int? id,
+    required String docType,
+    String? title,
+    required Map<String, dynamic> data,
+  }) async {
+    final db = await _db.database;
+    final now = DateTime.now().toIso8601String();
+
+    final row = <String, dynamic>{
+      'doc_type': docType,
+      'title': title,
+      'data': jsonEncode(data),
+      'updated_at': now,
+    };
+
+    if (id == null) {
+      row['created_at'] = now;
+      return await db.insert('draft_documents', row);
+    }
+
+    await db.update('draft_documents', row, where: 'id = ?', whereArgs: [id]);
+    return id;
+  }
+
+  Future<List<Map<String, dynamic>>> listDraftDocuments({required String docType}) async {
+    final db = await _db.database;
+    return await db.query(
+      'draft_documents',
+      where: 'doc_type = ?',
+      whereArgs: [docType],
+      orderBy: 'updated_at DESC',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getDraftDocument(int id) async {
+    final db = await _db.database;
+    final rows = await db.query('draft_documents', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<void> deleteDraftDocument(int id) async {
+    final db = await _db.database;
+    await db.delete('draft_documents', where: 'id = ?', whereArgs: [id]);
   }
 
   // Materials
@@ -63,6 +122,7 @@ class DatabaseProvider with ChangeNotifier {
     final data = _withSynced0(material.toMap());
     final id = await db.insert('materials', data);
     await _syncQueue.enqueueUpsert(table: 'materials', recordId: id, data: data);
+    signalRefresh();
     return id;
   }
 
@@ -78,6 +138,7 @@ class DatabaseProvider with ChangeNotifier {
     if (material.id != null) {
       await _syncQueue.enqueueUpsert(table: 'materials', recordId: material.id!, data: data);
     }
+    signalRefresh();
     return result;
   }
 
@@ -89,11 +150,12 @@ class DatabaseProvider with ChangeNotifier {
       whereArgs: [id],
     );
     await _syncQueue.enqueueDelete(table: 'materials', recordId: id);
+    signalRefresh();
   }
 
   Future<void> deleteAllData() async {
     await _db.deleteDatabase();
-    notifyListeners();
+    signalRefresh();
   }
 
   // Recipes
@@ -430,7 +492,10 @@ class DatabaseProvider with ChangeNotifier {
       movementToInsert = movement.copyWith(receiptNumber: receiptNumber);
     }
     
+    final now = DateTime.now().toIso8601String();
     final data = _withSynced0(movementToInsert.toMap());
+    // Ensure audit fields exist (older DBs might not have them, but newer schema expects updated_at)
+    data['updated_at'] ??= data['created_at'] ?? now;
     final id = await db.insert('stock_movements', data);
     await _syncQueue.enqueueUpsert(table: 'stock_movements', recordId: id, data: data);
     
@@ -438,7 +503,7 @@ class DatabaseProvider with ChangeNotifier {
     if (movementToInsert.status == 'approved' && movementToInsert.materialId != null) {
       await _updateMaterialStockFromMovement(movementToInsert);
     }
-    
+    signalRefresh();
     return id;
   }
 
@@ -453,6 +518,15 @@ class DatabaseProvider with ChangeNotifier {
       } else if (movement.movementType == 'issue') {
         newStock -= movement.quantity;
       }
+
+      // Hard guard: never allow an issue to overdraw stock (even on approval).
+      // Without this, the old behavior would clamp negative values to 0 and silently corrupt inventory.
+      if (movement.movementType == 'issue' && newStock < 0) {
+        throw Exception(
+          'Nedostatok zásob pri schválení výdaja: dostupné ${material.currentStock} ${material.unit}, '
+          'požadované ${movement.quantity} ${material.unit}',
+        );
+      }
       
       await updateMaterial(material.copyWith(
         currentStock: newStock < 0 ? 0 : newStock,
@@ -465,6 +539,20 @@ class DatabaseProvider with ChangeNotifier {
     final db = await _db.database;
     final movement = await getStockMovement(movementId);
     if (movement == null) return;
+
+    // Hard guard: never allow approving an issue if current stock is insufficient.
+    if (movement.movementType == 'issue' && movement.materialId != null) {
+      final material = await getMaterial(movement.materialId!);
+      if (material == null) {
+        throw Exception('Materiál neexistuje (ID ${movement.materialId})');
+      }
+      if (movement.quantity > material.currentStock) {
+        throw Exception(
+          'Nedostatok zásob: dostupné ${material.currentStock} ${material.unit}, '
+          'požadované ${movement.quantity} ${material.unit}',
+        );
+      }
+    }
     
     // Update movement status
     await db.update(
@@ -610,6 +698,7 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> updateStockMovement(StockMovement updatedMovement) async {
     final db = await _db.database;
+    final now = DateTime.now().toIso8601String();
     
     // Get original movement before update
     final originalMovement = await getStockMovement(updatedMovement.id!);
@@ -624,6 +713,7 @@ class DatabaseProvider with ChangeNotifier {
     
     // Update the movement in database
     final data = _withSynced0(updatedMovement.toMap());
+    data['updated_at'] = now;
     final result = await db.update(
       'stock_movements',
       data,
@@ -645,7 +735,7 @@ class DatabaseProvider with ChangeNotifier {
         await _updateMaterialWeightedAverage(updatedMovement.materialId!);
       }
     }
-    
+    signalRefresh();
     return result;
   }
   
@@ -804,6 +894,7 @@ class DatabaseProvider with ChangeNotifier {
     final data = _withSynced0(supplier.toMap());
     final id = await db.insert('suppliers', data);
     await _syncQueue.enqueueUpsert(table: 'suppliers', recordId: id, data: data);
+    signalRefresh();
     return id;
   }
 
@@ -819,6 +910,7 @@ class DatabaseProvider with ChangeNotifier {
     if (supplier.id != null) {
       await _syncQueue.enqueueUpsert(table: 'suppliers', recordId: supplier.id!, data: data);
     }
+    signalRefresh();
     return result;
   }
 
@@ -826,6 +918,7 @@ class DatabaseProvider with ChangeNotifier {
     final db = await _db.database;
     await db.delete('suppliers', where: 'id = ?', whereArgs: [id]);
     await _syncQueue.enqueueDelete(table: 'suppliers', recordId: id);
+    signalRefresh();
   }
 
   // Warehouses
@@ -860,6 +953,7 @@ class DatabaseProvider with ChangeNotifier {
     final data = _withSynced0(warehouse.toMap());
     final id = await db.insert('warehouses', data);
     await _syncQueue.enqueueUpsert(table: 'warehouses', recordId: id, data: data);
+    signalRefresh();
     return id;
   }
 
@@ -875,6 +969,7 @@ class DatabaseProvider with ChangeNotifier {
     if (warehouse.id != null) {
       await _syncQueue.enqueueUpsert(table: 'warehouses', recordId: warehouse.id!, data: data);
     }
+    signalRefresh();
     return result;
   }
 
@@ -882,6 +977,7 @@ class DatabaseProvider with ChangeNotifier {
     final db = await _db.database;
     await db.delete('warehouses', where: 'id = ?', whereArgs: [id]);
     await _syncQueue.enqueueDelete(table: 'warehouses', recordId: id);
+    signalRefresh();
   }
 
   // Price History
@@ -1020,6 +1116,7 @@ class DatabaseProvider with ChangeNotifier {
     final data = _withSynced0(customer.toMap());
     final id = await db.insert('customers', data);
     await _syncQueue.enqueueUpsert(table: 'customers', recordId: id, data: data);
+    signalRefresh();
     return id;
   }
 
@@ -1035,6 +1132,7 @@ class DatabaseProvider with ChangeNotifier {
     if (customer.id != null) {
       await _syncQueue.enqueueUpsert(table: 'customers', recordId: customer.id!, data: data);
     }
+    signalRefresh();
     return result;
   }
 
@@ -1042,6 +1140,80 @@ class DatabaseProvider with ChangeNotifier {
     final db = await _db.database;
     await db.delete('customers', where: 'id = ?', whereArgs: [id]);
     await _syncQueue.enqueueDelete(table: 'customers', recordId: id);
+    signalRefresh();
+  }
+
+  // Pallet deposits / movements (záloha paliet)
+  Future<List<PalletMovement>> getPalletMovements({int? customerId}) async {
+    final db = await _db.database;
+    final maps = await db.query(
+      'pallet_movements',
+      where: customerId == null ? null : 'customer_id = ?',
+      whereArgs: customerId == null ? null : [customerId],
+      orderBy: 'movement_date DESC, created_at DESC',
+    );
+    return maps.map((m) => PalletMovement.fromMap(m)).toList();
+  }
+
+  Future<double> getCustomerPalletBalance(int customerId) async {
+    final db = await _db.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT
+        COALESCE(SUM(
+          CASE
+            WHEN direction = 'issued' THEN quantity
+            WHEN direction = 'returned' THEN -quantity
+            ELSE 0
+          END
+        ), 0) AS balance
+      FROM pallet_movements
+      WHERE customer_id = ?
+      ''',
+      [customerId],
+    );
+    if (rows.isEmpty) return 0;
+    final v = rows.first['balance'];
+    if (v is int) return v.toDouble();
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0;
+    return 0;
+  }
+
+  Future<int> insertPalletMovement(PalletMovement movement) async {
+    final db = await _db.database;
+    final now = DateTime.now().toIso8601String();
+    final data = _withSynced0(movement.toMap());
+    data['updated_at'] ??= now;
+    final id = await db.insert('pallet_movements', data);
+    await _syncQueue.enqueueUpsert(table: 'pallet_movements', recordId: id, data: data);
+    signalRefresh();
+    return id;
+  }
+
+  Future<int> updatePalletMovement(PalletMovement movement) async {
+    final db = await _db.database;
+    final now = DateTime.now().toIso8601String();
+    final data = _withSynced0(movement.toMap());
+    data['updated_at'] = now;
+    final result = await db.update(
+      'pallet_movements',
+      data,
+      where: 'id = ?',
+      whereArgs: [movement.id],
+    );
+    if (movement.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'pallet_movements', recordId: movement.id!, data: data);
+    }
+    signalRefresh();
+    return result;
+  }
+
+  Future<void> deletePalletMovement(int id) async {
+    final db = await _db.database;
+    await db.delete('pallet_movements', where: 'id = ?', whereArgs: [id]);
+    await _syncQueue.enqueueDelete(table: 'pallet_movements', recordId: id);
+    signalRefresh();
   }
 
   // Warehouse Locations

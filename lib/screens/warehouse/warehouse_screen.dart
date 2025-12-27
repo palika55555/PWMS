@@ -22,6 +22,7 @@ import 'auto_orders_screen.dart';
 import 'warehouse_closings_screen.dart';
 import 'price_history_screen.dart';
 import 'warehouses_screen.dart';
+import 'warehouse_nav_notification.dart';
 import '../home_screen.dart';
 
 class WarehouseScreen extends StatefulWidget {
@@ -40,6 +41,7 @@ class _SortConfig {
 
 class _WarehouseScreenState extends State<WarehouseScreen> {
   int _selectedIndex = 0;
+  final GlobalKey<ReceiptsPendingScreenState> _pendingKey = GlobalKey<ReceiptsPendingScreenState>();
   List<Material> _materials = [];
   List<Material> _filteredMaterials = [];
   List<Material> _lowStockMaterials = [];
@@ -506,24 +508,33 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           
           // BODY - Telo
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : IndexedStack(
-                    index: _selectedIndex,
-                    children: [
-                      _buildStockOverview(),
-                      const ReceiptsPendingScreen(),
-                      const BulkReceiptScreen(),
-                      const IssueScreen(),
-                      const InventoryScreen(),
-                      const MovementsHistoryScreen(),
-                      const SuppliersScreen(),
-                      const CustomersScreen(),
-                      const AutoOrdersScreen(),
-                      const WarehouseClosingsScreen(),
-                      const WarehousesScreen(),
-                    ],
-                  ),
+            child: NotificationListener<WarehouseNavigateNotification>(
+              onNotification: (n) {
+                setState(() => _selectedIndex = n.tabIndex);
+                if (n.tabIndex == 1 && n.approvalsMode != null) {
+                  _pendingKey.currentState?.setMode(n.approvalsMode!);
+                }
+                return true;
+              },
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : IndexedStack(
+                      index: _selectedIndex,
+                      children: [
+                        _buildStockOverview(),
+                        ReceiptsPendingScreen(key: _pendingKey),
+                        const BulkReceiptScreen(),
+                        const IssueScreen(),
+                        const InventoryScreen(),
+                        const MovementsHistoryScreen(),
+                        const SuppliersScreen(),
+                        const CustomersScreen(),
+                        const AutoOrdersScreen(),
+                        const WarehouseClosingsScreen(),
+                        const WarehousesScreen(),
+                      ],
+                    ),
+            ),
           ),
           
           // FOOTER - Päta

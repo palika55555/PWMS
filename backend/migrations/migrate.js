@@ -413,6 +413,7 @@ async function runMigrations() {
           contact_person TEXT,
           payment_terms TEXT,
           credit_limit NUMERIC,
+          pallet_deposit_price NUMERIC,
           price_list TEXT,
           notes TEXT,
           is_active BOOLEAN DEFAULT TRUE,
@@ -440,9 +441,45 @@ async function runMigrations() {
       { name: 'contact_person', sql: 'contact_person TEXT' },
       { name: 'payment_terms', sql: 'payment_terms TEXT' },
       { name: 'credit_limit', sql: 'credit_limit NUMERIC' },
+      { name: 'pallet_deposit_price', sql: 'pallet_deposit_price NUMERIC' },
       { name: 'price_list', sql: 'price_list TEXT' },
       { name: 'notes', sql: 'notes TEXT' },
       { name: 'is_active', sql: 'is_active BOOLEAN DEFAULT TRUE' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
+
+    // Pallet movements (záloha paliet)
+    const palletMovementsExists = await checkTableExists(client, 'pallet_movements');
+    if (!palletMovementsExists) {
+      await client.query(`
+        CREATE TABLE pallet_movements (
+          id SERIAL PRIMARY KEY,
+          customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+          direction TEXT NOT NULL,
+          quantity NUMERIC NOT NULL,
+          movement_date TEXT NOT NULL,
+          notes TEXT,
+          created_by TEXT NOT NULL,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await client.query(`CREATE INDEX idx_pallet_movements_customer ON pallet_movements(customer_id)`);
+      await client.query(`CREATE INDEX idx_pallet_movements_date ON pallet_movements(movement_date)`);
+      console.log('Created pallet_movements table');
+    } else {
+      console.log('Pallet_movements table already exists');
+    }
+    await ensureMissingColumns(client, 'pallet_movements', [
+      { name: 'customer_id', sql: 'customer_id INTEGER' },
+      { name: 'direction', sql: 'direction TEXT NOT NULL' },
+      { name: 'quantity', sql: 'quantity NUMERIC NOT NULL' },
+      { name: 'movement_date', sql: 'movement_date TEXT NOT NULL' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'created_by', sql: 'created_by TEXT NOT NULL' },
       { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
       { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
       { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
@@ -549,6 +586,7 @@ async function runMigrations() {
           document_number TEXT,
           supplier_name TEXT,
           recipient_name TEXT,
+          customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
           reason TEXT,
           location TEXT,
           notes TEXT,
@@ -568,7 +606,9 @@ async function runMigrations() {
           rejection_reason TEXT,
           receipt_number TEXT,
           synced BOOLEAN DEFAULT TRUE,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_by TEXT
         )
       `);
       console.log('Created stock_movements table');
@@ -593,6 +633,7 @@ async function runMigrations() {
       { name: 'vat_rate', sql: 'vat_rate NUMERIC' },
       { name: 'supplier_id', sql: 'supplier_id INTEGER' },
       { name: 'warehouse_id', sql: 'warehouse_id INTEGER' },
+      { name: 'customer_id', sql: 'customer_id INTEGER' },
       { name: 'movement_date', sql: 'movement_date TEXT NOT NULL' },
       { name: 'delivery_date', sql: 'delivery_date TEXT' },
       { name: 'created_by', sql: 'created_by TEXT NOT NULL' },
@@ -603,6 +644,8 @@ async function runMigrations() {
       { name: 'receipt_number', sql: 'receipt_number TEXT' },
       { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
       { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_by', sql: 'updated_by TEXT' },
     ]);
 
     // Inventories table

@@ -6,21 +6,28 @@ import '../../models/models.dart' hide Material;
 import '../../models/material.dart' as material_model;
 import '../../models/supplier.dart';
 import 'bulk_receipt_screen.dart';
+import 'issue_screen.dart';
 import 'receipt_print_screen.dart';
+import 'issue_print_screen.dart';
 import 'edit_receipt_screen.dart';
 
 class ReceiptsPendingScreen extends StatefulWidget {
   const ReceiptsPendingScreen({super.key});
 
   @override
-  State<ReceiptsPendingScreen> createState() => _ReceiptsPendingScreenState();
+  State<ReceiptsPendingScreen> createState() => ReceiptsPendingScreenState();
 }
 
-class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
+class ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
+  String _mode = 'receipt'; // 'receipt' | 'issue'
   List<StockMovement> _receipts = [];
   Map<String, List<StockMovement>> _groupedReceipts = {}; // Grouped by receiptNumber
+  List<StockMovement> _issues = [];
+  Map<String, List<StockMovement>> _groupedIssues = {}; // Grouped by documentNumber (or single)
   Map<int, material_model.Material> _materials = {};
   Map<int, Supplier> _suppliers = {};
+  Map<int, Warehouse> _warehouses = {};
+  Map<int, Customer> _customers = {};
   bool _loading = true;
   String _filterStatus = 'pending'; // pending, approved, rejected, cancelled, all
   bool _showQuickReceiptsOnly = false; // Filter for quick receipts
@@ -28,6 +35,18 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
   @override
   void initState() {
     super.initState();
+    _loadReceipts();
+  }
+
+  /// Programmatically switch between approvals modes.
+  void setMode(String mode) {
+    if (mode != 'receipt' && mode != 'issue') return;
+    if (!mounted) return;
+    setState(() {
+      _mode = mode;
+      _filterStatus = 'pending';
+      _showQuickReceiptsOnly = false;
+    });
     _loadReceipts();
   }
 
@@ -48,13 +67,15 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
     setState(() => _loading = true);
     final dbProvider = Provider.of<DatabaseProvider>(context, listen: false);
     
-    final receipts = await dbProvider.getStockMovements(
-      movementType: 'receipt',
+    final movements = await dbProvider.getStockMovements(
+      movementType: _mode,
       status: _filterStatus == 'all' ? null : _filterStatus,
     );
     
     final materials = await dbProvider.getMaterials();
     final suppliers = await dbProvider.getSuppliers();
+    final warehouses = await dbProvider.getWarehouses(activeOnly: true);
+    final customers = await dbProvider.getCustomers(activeOnly: true);
     
     final materialsMap = <int, material_model.Material>{};
     for (final m in materials) {
@@ -69,30 +90,82 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
         suppliersMap[s.id!] = s;
       }
     }
-    
-    // Filter by quick receipts if needed
-    final filteredReceipts = _showQuickReceiptsOnly
-        ? receipts.where((r) => r.notes == 'Rýchly príjem').toList()
-        : receipts;
-    
-    // Group receipts by receiptNumber
-    final groupedReceipts = <String, List<StockMovement>>{};
-    for (final receipt in filteredReceipts) {
-      // Use receiptNumber if available, otherwise use unique key for single-item receipts
-      final key = receipt.receiptNumber ?? 'single_${receipt.id}';
-      if (!groupedReceipts.containsKey(key)) {
-        groupedReceipts[key] = [];
+
+    final warehousesMap = <int, Warehouse>{};
+    for (final w in warehouses) {
+      if (w.id != null) {
+        warehousesMap[w.id!] = w;
       }
-      groupedReceipts[key]!.add(receipt);
+    }
+
+    final customersMap = <int, Customer>{};
+    for (final c in customers) {
+      if (c.id != null) {
+        customersMap[c.id!] = c;
+      }
     }
     
-    setState(() {
-      _receipts = filteredReceipts;
-      _groupedReceipts = groupedReceipts;
-      _materials = materialsMap;
-      _suppliers = suppliersMap;
-      _loading = false;
-    });
+    if (_mode == 'receipt') {
+      // Filter by quick receipts if needed
+      final filteredReceipts = _showQuickReceiptsOnly
+          ? movements.where((r) => r.notes == 'Rýchly príjem').toList()
+          : movements;
+
+      // Group receipts by receiptNumber
+      final groupedReceipts = <String, List<StockMovement>>{};
+      for (final receipt in filteredReceipts) {
+        // Use receiptNumber if available, otherwise use unique key for single-item receipts
+        final key = receipt.receiptNumber ?? 'single_${receipt.id}';
+        if (!groupedReceipts.containsKey(key)) {
+          groupedReceipts[key] = [];
+        }
+        groupedReceipts[key]!.add(receipt);
+      }
+
+      setState(() {
+        _receipts = filteredReceipts;
+        _groupedReceipts = groupedReceipts;
+        _issues = [];
+        _groupedIssues = {};
+        _materials = materialsMap;
+        _suppliers = suppliersMap;
+        _warehouses = warehousesMap;
+        _customers = customersMap;
+        _loading = false;
+      });
+      return;
+    } else {
+      final filteredIssues = movements;
+
+      // Group issues by internal issue number (receipt_number) if present; else by document number; else single.
+      final groupedIssues = <String, List<StockMovement>>{};
+      for (final issue in filteredIssues) {
+        final issueNo = issue.receiptNumber?.trim();
+        final doc = issue.documentNumber?.trim();
+        final key = (issueNo != null && issueNo.isNotEmpty)
+            ? issueNo
+            : ((doc != null && doc.isNotEmpty) ? doc : 'single_${issue.id}');
+        if (!groupedIssues.containsKey(key)) {
+          groupedIssues[key] = [];
+        }
+        groupedIssues[key]!.add(issue);
+      }
+
+      setState(() {
+        _issues = filteredIssues;
+        _groupedIssues = groupedIssues;
+        _receipts = [];
+        _groupedReceipts = {};
+        _materials = materialsMap;
+        _suppliers = suppliersMap;
+        _warehouses = warehousesMap;
+        _customers = customersMap;
+        _loading = false;
+      });
+      return;
+    }
+    
+    // unreachable
   }
 
   Future<void> _approveReceipt(String receiptNumber) async {
@@ -114,6 +187,53 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
         SnackBar(
           content: Text('Príjemka ${receipts.length > 1 ? "(${receipts.length} položiek) " : ""}bola schválená'),
           backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.only(
+            bottom: mediaQuery.size.height - mediaQuery.padding.top - 60,
+            left: 16,
+            right: 16,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _approveIssue(String groupKey) async {
+    final dbProvider = Provider.of<DatabaseProvider>(context, listen: false);
+    final issues = _groupedIssues[groupKey] ?? [];
+
+    try {
+      for (final issue in issues) {
+        if (issue.id != null) {
+          await dbProvider.approveStockMovement(issue.id!, 'Current User'); // TODO: Get from auth
+        }
+      }
+
+      await _loadReceipts();
+
+      if (mounted) {
+        final mediaQuery = MediaQuery.of(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Výdaj ${issues.length > 1 ? "(${issues.length} položiek) " : ""}bol schválený'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(
+              bottom: mediaQuery.size.height - mediaQuery.padding.top - 60,
+              left: 16,
+              right: 16,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      await _loadReceipts();
+      if (!mounted) return;
+      final mediaQuery = MediaQuery.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Chyba pri schválení: $e'),
+          backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           margin: EdgeInsets.only(
             bottom: mediaQuery.size.height - mediaQuery.padding.top - 60,
@@ -189,6 +309,82 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Príjemka${receipts.length > 1 ? " (${receipts.length} položiek) " : " "}bola zamietnutá'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(
+              bottom: mediaQuery.size.height - mediaQuery.padding.top - 60,
+              left: 16,
+              right: 16,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectIssue(String groupKey) async {
+    final reasonController = TextEditingController();
+    final issues = _groupedIssues[groupKey] ?? [];
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Zamietnuť výdaj${issues.length > 1 ? " (${issues.length} položiek)" : ""}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (issues.length > 1)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Tento výdaj obsahuje ${issues.length} položiek. Všetky budú zamietnuté.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+              ),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Dôvod zamietnutia *',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušiť'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (reasonController.text.trim().isNotEmpty) {
+                Navigator.pop(context, reasonController.text.trim());
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Zamietnuť'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      final dbProvider = Provider.of<DatabaseProvider>(context, listen: false);
+      for (final issue in issues) {
+        if (issue.id != null) {
+          await dbProvider.rejectStockMovement(issue.id!, 'Current User', result);
+        }
+      }
+      await _loadReceipts();
+
+      if (mounted) {
+        final mediaQuery = MediaQuery.of(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Výdaj${issues.length > 1 ? " (${issues.length} položiek) " : " "}bol zamietnutý'),
             backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
             margin: EdgeInsets.only(
@@ -413,27 +609,50 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Príjemky na schválenie'),
+        title: Text(_mode == 'receipt' ? 'Príjemky na schválenie' : 'Výdaje na schválenie'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const BulkReceiptScreen(),
-                ),
-              );
-              if (result == true) {
-                _loadReceipts();
-              }
-            },
-            tooltip: 'Nová príjemka',
-          ),
+          if (_mode == 'receipt')
+            IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const BulkReceiptScreen(),
+                  ),
+                );
+                if (result == true) {
+                  _loadReceipts();
+                }
+              },
+              tooltip: 'Nová príjemka',
+            ),
         ],
       ),
       body: Column(
         children: [
+          // Mode selector
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'receipt', label: Text('Príjemky'), icon: Icon(Icons.arrow_downward)),
+                ButtonSegment(value: 'issue', label: Text('Výdaje'), icon: Icon(Icons.arrow_upward)),
+              ],
+              selected: {_mode},
+              onSelectionChanged: (s) {
+                final next = s.first;
+                if (next == _mode) return;
+                setState(() {
+                  _mode = next;
+                  // Reset receipt-only filter when switching away.
+                  if (_mode != 'receipt') _showQuickReceiptsOnly = false;
+                });
+                _loadReceipts();
+              },
+            ),
+          ),
+
           // Filter chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -451,33 +670,34 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
                   const SizedBox(width: 8),
                   _buildFilterChip('all', 'Všetky', Colors.grey),
                   const SizedBox(width: 8),
-                  FilterChip(
-                    label: const Text('Rýchle príjmy'),
-                    selected: _showQuickReceiptsOnly,
-                    onSelected: (selected) {
-                      setState(() {
-                        _showQuickReceiptsOnly = selected;
-                        _loadReceipts();
-                      });
-                    },
-                    avatar: Icon(
-                      Icons.flash_on,
-                      size: 18,
-                      color: _showQuickReceiptsOnly ? Colors.white : Colors.orange,
+                  if (_mode == 'receipt')
+                    FilterChip(
+                      label: const Text('Rýchle príjmy'),
+                      selected: _showQuickReceiptsOnly,
+                      onSelected: (selected) {
+                        setState(() {
+                          _showQuickReceiptsOnly = selected;
+                          _loadReceipts();
+                        });
+                      },
+                      avatar: Icon(
+                        Icons.flash_on,
+                        size: 18,
+                        color: _showQuickReceiptsOnly ? Colors.white : Colors.orange,
+                      ),
+                      selectedColor: Theme.of(context).colorScheme.primary,
+                      checkmarkColor: Colors.white,
                     ),
-                    selectedColor: Colors.orange,
-                    checkmarkColor: Colors.white,
-                  ),
                 ],
               ),
             ),
           ),
           
-          // Receipts list
+          // List
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _receipts.isEmpty
+                : (_mode == 'receipt' ? _receipts.isEmpty : _issues.isEmpty)
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -485,7 +705,7 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
                             Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
                             const SizedBox(height: 16),
                             Text(
-                              'Žiadne príjemky',
+                              _mode == 'receipt' ? 'Žiadne príjemky' : 'Žiadne výdaje',
                               style: TextStyle(color: Colors.grey[600]),
                             ),
                           ],
@@ -493,170 +713,172 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
                       )
                     : RefreshIndicator(
                         onRefresh: _loadReceipts,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _groupedReceipts.length,
-                          itemBuilder: (context, index) {
-                            final receiptNumber = _groupedReceipts.keys.elementAt(index);
-                            final receipts = _groupedReceipts[receiptNumber]!;
-                            final firstReceipt = receipts.first;
-                            final isGrouped = receipts.length > 1;
-                            
-                            // Get supplier from first receipt (should be same for all)
-                            final supplier = firstReceipt.supplierId != null
-                                ? _suppliers[firstReceipt.supplierId]
-                                : null;
-                            
-                            return Card(
-                              elevation: 2,
-                              margin: const EdgeInsets.only(bottom: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(
-                                  color: _getStatusColor(firstReceipt.status),
-                                  width: 2,
-                                ),
-                              ),
-                              child: ExpansionTile(
-                                leading: Icon(
-                                  _getStatusIcon(firstReceipt.status),
-                                  color: _getStatusColor(firstReceipt.status),
-                                ),
-                                title: Text(
-                                  isGrouped 
-                                      ? (firstReceipt.receiptNumber ?? 'Hromadný príjem')
-                                      : (_materials[firstReceipt.materialId]?.name ?? 'Neznámy materiál'),
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      isGrouped
-                                          ? '${receipts.length} položiek • ${DateFormat('dd.MM.yyyy').format(DateTime.parse(firstReceipt.movementDate))}'
-                                          : '${firstReceipt.quantity} ${firstReceipt.unit} • ${DateFormat('dd.MM.yyyy').format(DateTime.parse(firstReceipt.movementDate))}',
-                                    ),
-                                    if (firstReceipt.receiptNumber != null && isGrouped)
-                                      Text(
-                                        'Číslo: ${firstReceipt.receiptNumber}',
-                                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        child: _mode == 'receipt'
+                            ? ListView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: _groupedReceipts.length,
+                                itemBuilder: (context, index) {
+                                  final receiptNumber = _groupedReceipts.keys.elementAt(index);
+                                  final receipts = _groupedReceipts[receiptNumber]!;
+                                  final firstReceipt = receipts.first;
+                                  final isGrouped = receipts.length > 1;
+
+                                  // Get supplier from first receipt (should be same for all)
+                                  final supplier = firstReceipt.supplierId != null ? _suppliers[firstReceipt.supplierId] : null;
+
+                                  return Card(
+                                    elevation: 2,
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      side: BorderSide(
+                                        color: _getStatusColor(firstReceipt.status),
+                                        width: 2,
                                       ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _getStatusColor(firstReceipt.status).withOpacity(0.2),
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            _getStatusText(firstReceipt.status),
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: _getStatusColor(firstReceipt.status),
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
                                     ),
-                                  ],
-                                ),
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Common info from first receipt
-                                        if (firstReceipt.receiptNumber != null) ...[
-                                          _buildInfoRow('Číslo príjemky', firstReceipt.receiptNumber!),
-                                          const SizedBox(height: 8),
-                                        ],
-                                        if (firstReceipt.documentNumber != null) ...[
-                                          _buildInfoRow('Číslo dokladu', firstReceipt.documentNumber!),
-                                          const SizedBox(height: 8),
-                                        ],
-                                        if (firstReceipt.supplierName != null) ...[
-                                          _buildInfoRow('Dodávateľ', firstReceipt.supplierName!),
-                                          const SizedBox(height: 8),
-                                        ],
-                                        if (firstReceipt.location != null) ...[
-                                          _buildInfoRow('Miesto', firstReceipt.location!),
-                                          const SizedBox(height: 8),
-                                        ],
-                                        if (firstReceipt.approvedBy != null) ...[
-                                          _buildInfoRow(
-                                            'Schválil',
-                                            '${firstReceipt.approvedBy} ${firstReceipt.approvedAt != null ? '• ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.parse(firstReceipt.approvedAt!))}' : ''}',
+                                    child: ExpansionTile(
+                                      leading: Icon(
+                                        _getStatusIcon(firstReceipt.status),
+                                        color: _getStatusColor(firstReceipt.status),
+                                      ),
+                                      title: Text(
+                                        isGrouped
+                                            ? (firstReceipt.receiptNumber ?? 'Hromadný príjem')
+                                            : (_materials[firstReceipt.materialId]?.name ?? 'Neznámy materiál'),
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                      subtitle: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            isGrouped
+                                                ? '${receipts.length} položiek • ${DateFormat('dd.MM.yyyy').format(DateTime.parse(firstReceipt.movementDate))}'
+                                                : '${firstReceipt.quantity} ${firstReceipt.unit} • ${DateFormat('dd.MM.yyyy').format(DateTime.parse(firstReceipt.movementDate))}',
                                           ),
-                                          const SizedBox(height: 8),
-                                        ],
-                                        if (firstReceipt.rejectionReason != null) ...[
-                                          Container(
-                                            padding: const EdgeInsets.all(12),
-                                            decoration: BoxDecoration(
-                                              color: firstReceipt.status == 'cancelled' 
-                                                  ? Colors.grey.shade100 
-                                                  : Colors.red.shade50,
-                                              borderRadius: BorderRadius.circular(8),
+                                          if (firstReceipt.receiptNumber != null && isGrouped)
+                                            Text(
+                                              'Číslo: ${firstReceipt.receiptNumber}',
+                                              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                                             ),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  firstReceipt.status == 'cancelled'
-                                                      ? 'Dôvod storna:'
-                                                      : 'Dôvod zamietnutia:',
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 4,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: _getStatusColor(firstReceipt.status).withOpacity(0.2),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: Text(
+                                                  _getStatusText(firstReceipt.status),
                                                   style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: _getStatusColor(firstReceipt.status),
                                                     fontWeight: FontWeight.bold,
-                                                    color: firstReceipt.status == 'cancelled'
-                                                        ? Colors.grey.shade900
-                                                        : Colors.red.shade900,
                                                   ),
                                                 ),
-                                                const SizedBox(height: 4),
-                                                Text(firstReceipt.rejectionReason!),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                        ],
-                                        
-                                        // Items list for grouped receipts
-                                        if (isGrouped) ...[
-                                          const Divider(),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Položky príjemky (${receipts.length}):',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          ...receipts.asMap().entries.map((entry) {
-                                            final idx = entry.key;
-                                            final r = entry.value;
-                                            final mat = r.materialId != null ? _materials[r.materialId] : null;
-                                            return Container(
-                                              margin: EdgeInsets.only(bottom: idx < receipts.length - 1 ? 12 : 0),
-                                              padding: const EdgeInsets.all(12),
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey.shade50,
-                                                borderRadius: BorderRadius.circular(8),
-                                                border: Border.all(color: Colors.grey.shade300),
                                               ),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              if (firstReceipt.receiptNumber != null) ...[
+                                                _buildInfoRow('Číslo príjemky', firstReceipt.receiptNumber!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstReceipt.documentNumber != null) ...[
+                                                _buildInfoRow('Číslo dokladu', firstReceipt.documentNumber!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstReceipt.supplierName != null) ...[
+                                                _buildInfoRow('Dodávateľ', firstReceipt.supplierName!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (supplier != null) ...[
+                                                _buildInfoRow('Dodávateľ (ID)', '${supplier.id ?? '-'}'),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstReceipt.location != null) ...[
+                                                _buildInfoRow('Miesto', firstReceipt.location!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstReceipt.approvedBy != null) ...[
+                                                _buildInfoRow(
+                                                  'Schválil',
+                                                  '${firstReceipt.approvedBy} ${firstReceipt.approvedAt != null ? '• ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.parse(firstReceipt.approvedAt!))}' : ''}',
+                                                ),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstReceipt.rejectionReason != null) ...[
+                                                Container(
+                                                  padding: const EdgeInsets.all(12),
+                                                  decoration: BoxDecoration(
+                                                    color: firstReceipt.status == 'cancelled'
+                                                        ? Colors.grey.shade100
+                                                        : Colors.red.shade50,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
-                                                      Expanded(
+                                                      Text(
+                                                        firstReceipt.status == 'cancelled'
+                                                            ? 'Dôvod storna:'
+                                                            : 'Dôvod zamietnutia:',
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          color: firstReceipt.status == 'cancelled'
+                                                              ? Colors.grey.shade900
+                                                              : Colors.red.shade900,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(firstReceipt.rejectionReason!),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                              ],
+
+                                              // Items list for grouped receipts
+                                              if (isGrouped) ...[
+                                                const Divider(),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  'Položky príjemky (${receipts.length}):',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 12),
+                                                ...receipts.asMap().entries.map((entry) {
+                                                  final idx = entry.key;
+                                                  final r = entry.value;
+                                                  final mat = r.materialId != null ? _materials[r.materialId] : null;
+                                                  return Container(
+                                                    margin: EdgeInsets.only(bottom: idx < receipts.length - 1 ? 12 : 0),
+                                                    padding: const EdgeInsets.all(12),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.grey.shade50,
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      border: Border.all(color: Colors.grey.shade300),
+                                                    ),
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Row(
+                                                          children: [
+                                                            Expanded(
                                                         child: Text(
                                                           mat?.name ?? 'Neznámy materiál',
                                                           style: const TextStyle(
@@ -850,7 +1072,281 @@ class _ReceiptsPendingScreenState extends State<ReceiptsPendingScreen> {
                               ),
                             );
                           },
-                        ),
+                        )
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: _groupedIssues.length,
+                                itemBuilder: (context, index) {
+                                  final groupKey = _groupedIssues.keys.elementAt(index);
+                                  final issues = _groupedIssues[groupKey]!;
+                                  final firstIssue = issues.first;
+                                  final isGrouped = issues.length > 1;
+                                  final mat = firstIssue.materialId != null ? _materials[firstIssue.materialId] : null;
+                                  final wh = firstIssue.warehouseId != null ? _warehouses[firstIssue.warehouseId] : null;
+                                  final cust = firstIssue.customerId != null ? _customers[firstIssue.customerId] : null;
+                                  final partnerName = cust?.name ?? firstIssue.recipientName;
+
+                                  return Card(
+                                    elevation: 2,
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      side: BorderSide(
+                                        color: _getStatusColor(firstIssue.status),
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: ExpansionTile(
+                                      leading: Icon(
+                                        _getStatusIcon(firstIssue.status),
+                                        color: _getStatusColor(firstIssue.status),
+                                      ),
+                                      title: Text(
+                                        isGrouped
+                                            ? (firstIssue.receiptNumber ?? firstIssue.documentNumber ?? 'Výdaj')
+                                            : (mat?.name ?? 'Neznámy materiál'),
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                      subtitle: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            isGrouped
+                                                ? '${issues.length} položiek • ${DateFormat('dd.MM.yyyy').format(DateTime.parse(firstIssue.movementDate))}'
+                                                : '${firstIssue.quantity} ${firstIssue.unit} • ${DateFormat('dd.MM.yyyy').format(DateTime.parse(firstIssue.movementDate))}',
+                                          ),
+                                          if (wh != null || (partnerName != null && partnerName.trim().isNotEmpty)) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              [
+                                                if (wh != null) 'Sklad: ${wh.name}',
+                                                if (partnerName != null && partnerName.trim().isNotEmpty) 'Zákazník: $partnerName',
+                                              ].join(' • '),
+                                              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                                            ),
+                                          ],
+                                          if (firstIssue.receiptNumber != null) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Výdajka: ${firstIssue.receiptNumber}',
+                                              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                                            ),
+                                          ],
+                                          if (firstIssue.reason != null) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Dôvod: ${firstIssue.reason}',
+                                              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                                            ),
+                                          ],
+                                          const SizedBox(height: 4),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: _getStatusColor(firstIssue.status).withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              _getStatusText(firstIssue.status),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: _getStatusColor(firstIssue.status),
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              if (wh != null) ...[
+                                                _buildInfoRow('Sklad', wh.name),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (cust != null) ...[
+                                                _buildInfoRow('Zákazník', cust.name),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstIssue.receiptNumber != null) ...[
+                                                _buildInfoRow('Číslo výdajky', firstIssue.receiptNumber!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstIssue.documentNumber != null) ...[
+                                                _buildInfoRow('Číslo dokladu', firstIssue.documentNumber!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstIssue.recipientName != null) ...[
+                                                _buildInfoRow('Príjemca', firstIssue.recipientName!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstIssue.location != null) ...[
+                                                _buildInfoRow('Miesto', firstIssue.location!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstIssue.notes != null) ...[
+                                                _buildInfoRow('Poznámky', firstIssue.notes!),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstIssue.approvedBy != null) ...[
+                                                _buildInfoRow(
+                                                  'Schválil',
+                                                  '${firstIssue.approvedBy} ${firstIssue.approvedAt != null ? '• ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.parse(firstIssue.approvedAt!))}' : ''}',
+                                                ),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstIssue.updatedBy != null && firstIssue.updatedAt != null) ...[
+                                                _buildInfoRow(
+                                                  'Upravil',
+                                                  '${firstIssue.updatedBy} • ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.parse(firstIssue.updatedAt!))}',
+                                                ),
+                                                const SizedBox(height: 8),
+                                              ],
+                                              if (firstIssue.rejectionReason != null) ...[
+                                                Container(
+                                                  padding: const EdgeInsets.all(12),
+                                                  decoration: BoxDecoration(
+                                                    color: firstIssue.status == 'cancelled'
+                                                        ? Colors.grey.shade100
+                                                        : Colors.red.shade50,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        firstIssue.status == 'cancelled'
+                                                            ? 'Dôvod storna:'
+                                                            : 'Dôvod zamietnutia:',
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          color: firstIssue.status == 'cancelled'
+                                                              ? Colors.grey.shade900
+                                                              : Colors.red.shade900,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(firstIssue.rejectionReason!),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                              ],
+
+                                              const Divider(),
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: ElevatedButton.icon(
+                                                  onPressed: () {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (context) => IssuePrintScreen(
+                                                          issues: issues,
+                                                          materialsMap: _materials,
+                                                          warehousesMap: _warehouses,
+                                                          customersMap: _customers,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                                  icon: const Icon(Icons.print),
+                                                  label: const Text('Tlačiť PDF'),
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: Colors.blue,
+                                                    foregroundColor: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+
+                                              if (isGrouped) ...[
+                                                const Divider(),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  'Položky výdaja (${issues.length}):',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 12),
+                                                ...issues.asMap().entries.map((entry) {
+                                                  final idx = entry.key;
+                                                  final i = entry.value;
+                                                  final m = i.materialId != null ? _materials[i.materialId] : null;
+                                                  return Container(
+                                                    margin: EdgeInsets.only(bottom: idx < issues.length - 1 ? 12 : 0),
+                                                    padding: const EdgeInsets.all(12),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.grey.shade50,
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      border: Border.all(color: Colors.grey.shade300),
+                                                    ),
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Text(
+                                                            m?.name ?? 'Neznámy materiál',
+                                                            style: const TextStyle(fontWeight: FontWeight.bold),
+                                                          ),
+                                                        ),
+                                                        Text('${i.quantity} ${i.unit}'),
+                                                      ],
+                                                    ),
+                                                  );
+                                                }),
+                                                const SizedBox(height: 12),
+                                              ],
+
+                                              if (firstIssue.status == 'pending') ...[
+                                                const SizedBox(height: 12),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: OutlinedButton.icon(
+                                                        onPressed: () {
+                                                          Navigator.push(
+                                                            context,
+                                                            MaterialPageRoute(
+                                                              builder: (_) => IssueScreen(editIssues: issues),
+                                                            ),
+                                                          );
+                                                        },
+                                                        icon: const Icon(Icons.edit),
+                                                        label: const Text('Upraviť'),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: OutlinedButton.icon(
+                                                        onPressed: () => _rejectIssue(groupKey),
+                                                        icon: const Icon(Icons.close),
+                                                        label: const Text('Zamietnuť'),
+                                                        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: FilledButton.icon(
+                                                        onPressed: () => _approveIssue(groupKey),
+                                                        icon: const Icon(Icons.check),
+                                                        label: const Text('Schváliť'),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
                       ),
           ),
         ],

@@ -216,6 +216,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                   ),
                 ),
       floatingActionButton: FloatingActionButton(
+        heroTag: null,
         onPressed: () async {
           final result = await Navigator.push(
             context,

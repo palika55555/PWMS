@@ -30,6 +30,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
   final _contactPersonController = TextEditingController();
   final _paymentTermsController = TextEditingController();
   final _creditLimitController = TextEditingController();
+  final _palletDepositPriceController = TextEditingController();
   final _priceListController = TextEditingController();
   final _notesController = TextEditingController();
   bool _isActive = true;
@@ -70,6 +71,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
     _contactPersonController.dispose();
     _paymentTermsController.dispose();
     _creditLimitController.dispose();
+    _palletDepositPriceController.dispose();
     _priceListController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -1213,6 +1215,9 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
         creditLimit: _creditLimitController.text.trim().isEmpty 
             ? null 
             : double.tryParse(_creditLimitController.text),
+        palletDepositPrice: _palletDepositPriceController.text.trim().isEmpty
+            ? null
+            : double.tryParse(_palletDepositPriceController.text.trim().replaceAll(',', '.')),
         priceList: _priceListController.text.trim().isEmpty ? null : _priceListController.text.trim(),
         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
         isActive: _isActive,
@@ -1349,6 +1354,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                         _nameController,
                         'Názov spoločnosti *',
                         Icons.business,
+                        fieldKey: const ValueKey('customer.name'),
                         validator: (v) => v?.isEmpty ?? true ? 'Zadajte názov' : null,
                       ),
                       _buildTextFieldWithLoader(_companyIdController, 'IČO', Icons.badge, _loadingIco),
@@ -1384,6 +1390,12 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                       const SizedBox(height: 8),
                       _buildTextField(_paymentTermsController, 'Platobné podmienky', Icons.payment),
                       _buildTextField(_creditLimitController, 'Kreditný limit (€)', Icons.account_balance_wallet, keyboardType: TextInputType.number),
+                      _buildTextField(
+                        _palletDepositPriceController,
+                        'Cena zálohy palety (€/ks)',
+                        Icons.inventory_2,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
                       _buildTextField(_priceListController, 'Cenník', Icons.list_alt),
                       
                       const SizedBox(height: 16),
@@ -1444,6 +1456,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
+                      key: const ValueKey('customer.save'),
                       onPressed: _loading ? null : _saveCustomer,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1672,6 +1685,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
     TextEditingController controller,
     String label,
     IconData icon, {
+    Key? fieldKey,
     TextInputType? keyboardType,
     int maxLines = 1,
     String? Function(String?)? validator,
@@ -1679,6 +1693,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
+        key: fieldKey,
         controller: controller,
         decoration: InputDecoration(
           labelText: label,

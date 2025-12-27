@@ -198,6 +198,7 @@ class SyncProvider with ChangeNotifier {
         'warehouses',
         'warehouse_locations',
         'materials',
+        'pallet_movements',
         'aggregate_fractions',
         'recipes',
         'recipe_aggregates',
@@ -297,6 +298,8 @@ class SyncProvider with ChangeNotifier {
     try {
       // Tables we can safely snapshot from backend (matches existing backend migrations today).
       const tables = <String>[
+        'customers',
+        'pallet_movements',
         'materials',
         'aggregate_fractions',
         'recipes',
@@ -322,6 +325,7 @@ class SyncProvider with ChangeNotifier {
 
         // Delete child -> parent order.
         await txn.delete('products');
+        await txn.delete('pallet_movements');
         await txn.delete('quality_tests');
         await txn.delete('batch_materials');
         await txn.delete('batches');
@@ -329,6 +333,7 @@ class SyncProvider with ChangeNotifier {
         await txn.delete('recipes');
         await txn.delete('aggregate_fractions');
         await txn.delete('materials');
+        await txn.delete('customers');
 
         // Insert parent -> child order.
         Future<void> insertAll(String table) async {
@@ -344,6 +349,7 @@ class SyncProvider with ChangeNotifier {
           }
         }
 
+        await insertAll('customers');
         await insertAll('materials');
         await insertAll('aggregate_fractions');
         await insertAll('recipes');
@@ -352,6 +358,7 @@ class SyncProvider with ChangeNotifier {
         await insertAll('batch_materials');
         await insertAll('quality_tests');
         await insertAll('products');
+        await insertAll('pallet_movements');
       });
     } catch (e) {
       _lastSyncError = e.toString();

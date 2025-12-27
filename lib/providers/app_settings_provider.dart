@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 class AppSettingsProvider extends ChangeNotifier {
   static const _kInstallCompleted = 'install.completed';
@@ -36,6 +37,10 @@ class AppSettingsProvider extends ChangeNotifier {
   DateTime? _lastAutoBackupAt;
 
   bool _adminUnlocked = false; // session-only
+
+  final Completer<void> _ready = Completer<void>();
+  Future<void> get ready => _ready.future;
+  bool get isLoaded => _ready.isCompleted;
 
   bool get installCompleted => _installCompleted;
   String? get databaseFilePath => _databaseFilePath;
@@ -84,6 +89,7 @@ class AppSettingsProvider extends ChangeNotifier {
     _backupDir = prefs.getString(_kBackupDir);
     _backupDir ??= await _defaultBackupDir();
 
+    if (!_ready.isCompleted) _ready.complete();
     notifyListeners();
   }
 

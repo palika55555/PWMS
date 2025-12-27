@@ -405,6 +405,7 @@ class _MaterialSearchScreenState extends State<MaterialSearchScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: null,
         onPressed: () async {
           final result = await Navigator.push(
             context,

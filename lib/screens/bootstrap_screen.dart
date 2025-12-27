@@ -31,6 +31,8 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
 
   Future<void> _bootstrap() async {
     final settings = context.read<AppSettingsProvider>();
+    // Ensure settings have loaded from SharedPreferences before decision.
+    await settings.ready;
     if (!settings.installCompleted) {
       final ok = await Navigator.of(context).push<bool>(
         MaterialPageRoute(builder: (_) => const InstallationWizardScreen()),

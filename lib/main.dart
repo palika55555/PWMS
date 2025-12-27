@@ -22,6 +22,10 @@ class _ZoomOutIntent extends Intent {
   const _ZoomOutIntent();
 }
 
+class _RefreshIntent extends Intent {
+  const _RefreshIntent();
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
@@ -58,6 +62,7 @@ class ProBlockApp extends StatelessWidget {
       ],
       child: Consumer2<ZoomProvider, AppSettingsProvider>(
         builder: (context, zoomProvider, settings, child) {
+          final db = context.read<DatabaseProvider>();
           return Shortcuts(
             shortcuts: {
               // Ctrl + + (na hlavnej klávesnici je to Shift + =, alebo numerická klávesnica +)
@@ -81,6 +86,11 @@ class ProBlockApp extends StatelessWidget {
                 LogicalKeyboardKey.control,
                 LogicalKeyboardKey.numpadSubtract,
               ): const _ZoomOutIntent(),
+              // Ctrl + R -> refresh app data
+              LogicalKeySet(
+                LogicalKeyboardKey.control,
+                LogicalKeyboardKey.keyR,
+              ): const _RefreshIntent(),
             },
             child: Actions(
               actions: {
@@ -93,6 +103,12 @@ class ProBlockApp extends StatelessWidget {
                 _ZoomOutIntent: CallbackAction<_ZoomOutIntent>(
                   onInvoke: (_) {
                     zoomProvider.zoomOut();
+                    return null;
+                  },
+                ),
+                _RefreshIntent: CallbackAction<_RefreshIntent>(
+                  onInvoke: (_) {
+                    db.signalRefresh();
                     return null;
                   },
                 ),

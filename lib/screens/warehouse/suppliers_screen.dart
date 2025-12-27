@@ -193,6 +193,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                   ),
                 ),
       floatingActionButton: FloatingActionButton(
+        heroTag: null,
         onPressed: () async {
           final result = await Navigator.push(
             context,

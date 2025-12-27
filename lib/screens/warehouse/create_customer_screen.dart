@@ -32,6 +32,7 @@ class _CreateCustomerScreenState extends State<CreateCustomerScreen> {
   final _contactPersonController = TextEditingController();
   final _paymentTermsController = TextEditingController();
   final _creditLimitController = TextEditingController();
+  final _palletDepositPriceController = TextEditingController();
   final _priceListController = TextEditingController();
   final _notesController = TextEditingController();
   bool _isActive = true;
@@ -67,6 +68,7 @@ class _CreateCustomerScreenState extends State<CreateCustomerScreen> {
       _contactPersonController.text = widget.customer!.contactPerson ?? '';
       _paymentTermsController.text = widget.customer!.paymentTerms ?? '';
       _creditLimitController.text = widget.customer!.creditLimit?.toString() ?? '';
+      _palletDepositPriceController.text = widget.customer!.palletDepositPrice?.toString() ?? '';
       _priceListController.text = widget.customer!.priceList ?? '';
       _notesController.text = widget.customer!.notes ?? '';
       _isActive = widget.customer!.isActive;
@@ -89,6 +91,7 @@ class _CreateCustomerScreenState extends State<CreateCustomerScreen> {
     _contactPersonController.dispose();
     _paymentTermsController.dispose();
     _creditLimitController.dispose();
+    _palletDepositPriceController.dispose();
     _priceListController.dispose();
     _notesController.dispose();
     // Listeners sa automaticky odstránia pri dispose controllerov
@@ -1434,6 +1437,9 @@ class _CreateCustomerScreenState extends State<CreateCustomerScreen> {
         creditLimit: _creditLimitController.text.trim().isEmpty 
             ? null 
             : double.tryParse(_creditLimitController.text),
+        palletDepositPrice: _palletDepositPriceController.text.trim().isEmpty
+            ? null
+            : double.tryParse(_palletDepositPriceController.text.trim().replaceAll(',', '.')),
         priceList: _priceListController.text.trim().isEmpty ? null : _priceListController.text.trim(),
         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
         isActive: _isActive,
@@ -1589,6 +1595,12 @@ class _CreateCustomerScreenState extends State<CreateCustomerScreen> {
             _buildSectionTitle('Obchodné informácie'),
             _buildTextField(_paymentTermsController, 'Platobné podmienky', Icons.payment),
             _buildTextField(_creditLimitController, 'Kreditný limit (€)', Icons.account_balance_wallet, keyboardType: TextInputType.number),
+            _buildTextField(
+              _palletDepositPriceController,
+              'Cena zálohy palety (€/ks)',
+              Icons.inventory_2,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
             _buildTextField(_priceListController, 'Cenník', Icons.list_alt),
             
             const SizedBox(height: 8),

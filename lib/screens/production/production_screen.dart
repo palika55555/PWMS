@@ -6,6 +6,7 @@ import 'batch_list_screen.dart';
 import 'create_batch_screen.dart';
 import 'recipe_list_screen.dart';
 import 'production_input_screen.dart';
+import 'pallet_deposits_screen.dart';
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -33,6 +34,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 BatchListScreen(),
                 ProductionInputScreen(),
                 RecipeListScreen(),
+                PalletDepositsScreen(),
               ],
             ),
           ),
@@ -246,6 +248,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
               icon: Icon(Icons.menu_book_outlined),
               activeIcon: Icon(Icons.menu_book),
               label: 'Receptúry',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.inventory_2_outlined),
+              activeIcon: Icon(Icons.inventory_2),
+              label: 'Palety',
             ),
           ],
         ),

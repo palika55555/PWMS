@@ -16,4 +16,5 @@ export 'warehouse_closing.dart';
 export 'auto_order.dart';
 export 'audit_log.dart';
 export 'warehouse.dart';
+export 'pallet_movement.dart';
 

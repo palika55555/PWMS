@@ -211,6 +211,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   ),
                 ),
       floatingActionButton: FloatingActionButton(
+        heroTag: null,
         onPressed: () async {
           final result = await showDialog(
             context: context,

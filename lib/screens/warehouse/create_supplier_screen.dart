@@ -1485,7 +1485,13 @@ class _CreateSupplierScreenState extends State<CreateSupplierScreen> {
 
             // Basic info
             _buildSectionTitle('Základné informácie'),
-            _buildTextField(_nameController, 'Názov spoločnosti *', Icons.business, validator: (v) => v?.isEmpty ?? true ? 'Zadajte názov' : null),
+            _buildTextField(
+              _nameController,
+              'Názov spoločnosti *',
+              Icons.business,
+              fieldKey: const ValueKey('supplier.name'),
+              validator: (v) => v?.isEmpty ?? true ? 'Zadajte názov' : null,
+            ),
             _buildTextFieldWithLoader(_companyIdController, 'IČO', Icons.badge, _loadingIco),
             _buildTextField(_taxIdController, 'DIČ', Icons.receipt),
             _buildTextField(_vatIdController, 'IČ DPH', Icons.confirmation_number),
@@ -1513,6 +1519,7 @@ class _CreateSupplierScreenState extends State<CreateSupplierScreen> {
             
             const SizedBox(height: 32),
             ElevatedButton(
+              key: const ValueKey('supplier.save'),
               onPressed: _loading ? null : _saveSupplier,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1706,11 +1713,13 @@ class _CreateSupplierScreenState extends State<CreateSupplierScreen> {
   TextEditingController controller,
   String label,
   IconData icon,
-  bool isLoading,
-) {
+  bool isLoading, {
+  Key? fieldKey,
+}) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: TextFormField(
+      key: fieldKey,
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
@@ -1767,6 +1776,7 @@ class _CreateSupplierScreenState extends State<CreateSupplierScreen> {
   TextEditingController controller,
   String label,
   IconData icon, {
+  Key? fieldKey,
   TextInputType? keyboardType,
   int maxLines = 1,
   String? Function(String?)? validator,
@@ -1774,6 +1784,7 @@ class _CreateSupplierScreenState extends State<CreateSupplierScreen> {
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: TextFormField(
+      key: fieldKey,
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,

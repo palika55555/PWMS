@@ -15,6 +15,7 @@ class Customer {
   final String? contactPerson;
   final String? paymentTerms; // Platobné podmienky
   final double? creditLimit; // Kreditný limit
+  final double? palletDepositPrice; // Cena zálohy palety (€/ks)
   final String? priceList; // Názov cenníka pre zákazníka
   final String? notes;
   final bool isActive;
@@ -38,6 +39,7 @@ class Customer {
     this.contactPerson,
     this.paymentTerms,
     this.creditLimit,
+    this.palletDepositPrice,
     this.priceList,
     this.notes,
     this.isActive = true,
@@ -63,6 +65,7 @@ class Customer {
       'contact_person': contactPerson,
       'payment_terms': paymentTerms,
       'credit_limit': creditLimit,
+      'pallet_deposit_price': palletDepositPrice,
       'price_list': priceList,
       'notes': notes,
       'is_active': isActive ? 1 : 0,
@@ -89,6 +92,7 @@ class Customer {
       contactPerson: map['contact_person'] as String?,
       paymentTerms: map['payment_terms'] as String?,
       creditLimit: (map['credit_limit'] as num?)?.toDouble(),
+      palletDepositPrice: (map['pallet_deposit_price'] as num?)?.toDouble(),
       priceList: map['price_list'] as String?,
       notes: map['notes'] as String?,
       isActive: (map['is_active'] as int? ?? 1) == 1,
@@ -114,6 +118,7 @@ class Customer {
     String? contactPerson,
     String? paymentTerms,
     double? creditLimit,
+    double? palletDepositPrice,
     String? priceList,
     String? notes,
     bool? isActive,
@@ -137,6 +142,7 @@ class Customer {
       contactPerson: contactPerson ?? this.contactPerson,
       paymentTerms: paymentTerms ?? this.paymentTerms,
       creditLimit: creditLimit ?? this.creditLimit,
+      palletDepositPrice: palletDepositPrice ?? this.palletDepositPrice,
       priceList: priceList ?? this.priceList,
       notes: notes ?? this.notes,
       isActive: isActive ?? this.isActive,

@@ -580,6 +580,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> {
       ),
       floatingActionButton: _inventory!.status != 'completed'
           ? FloatingActionButton(
+              heroTag: null,
               onPressed: _addItem,
               child: const Icon(Icons.add),
             )

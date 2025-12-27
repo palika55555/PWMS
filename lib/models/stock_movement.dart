@@ -19,15 +19,18 @@ class StockMovement {
   final double? vatRate; // Sadzba DPH
   final int? supplierId; // ID dodávateľa
   final int? warehouseId; // ID skladu
+  final int? customerId; // ID zákazníka (pre výdajku)
   final String movementDate; // Dátum príjmu/výdaju
   final String? deliveryDate; // Dátum dodania (môže byť iný ako dátum príjmu)
   final String createdBy;
+  final String? updatedBy; // Kto upravil
   final String status; // 'pending', 'approved', 'rejected'
   final String? approvedBy; // Kto schválil
   final String? approvedAt; // Kedy schválil
   final String? rejectionReason; // Dôvod zamietnutia
   final int synced;
   final String createdAt;
+  final String? updatedAt; // Kedy upravil
 
   StockMovement({
     this.id,
@@ -49,15 +52,18 @@ class StockMovement {
     this.vatRate,
     this.supplierId,
     this.warehouseId,
+    this.customerId,
     required this.movementDate,
     this.deliveryDate,
     required this.createdBy,
+    this.updatedBy,
     this.status = 'pending', // Default: pending approval
     this.approvedBy,
     this.approvedAt,
     this.rejectionReason,
     this.synced = 0,
     required this.createdAt,
+    this.updatedAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -81,15 +87,18 @@ class StockMovement {
       'vat_rate': vatRate,
       'supplier_id': supplierId,
       'warehouse_id': warehouseId,
+      'customer_id': customerId,
       'movement_date': movementDate,
       'delivery_date': deliveryDate,
       'created_by': createdBy,
+      'updated_by': updatedBy,
       'status': status,
       'approved_by': approvedBy,
       'approved_at': approvedAt,
       'rejection_reason': rejectionReason,
       'synced': synced,
       'created_at': createdAt,
+      'updated_at': updatedAt,
     };
   }
 
@@ -114,15 +123,18 @@ class StockMovement {
       vatRate: (map['vat_rate'] as num?)?.toDouble(),
       supplierId: map['supplier_id'] as int?,
       warehouseId: map['warehouse_id'] as int?,
+      customerId: map['customer_id'] as int?,
       movementDate: map['movement_date'] as String,
       deliveryDate: map['delivery_date'] as String?,
       createdBy: map['created_by'] as String,
+      updatedBy: map['updated_by'] as String?,
       status: map['status'] as String? ?? 'pending',
       approvedBy: map['approved_by'] as String?,
       approvedAt: map['approved_at'] as String?,
       rejectionReason: map['rejection_reason'] as String?,
       synced: map['synced'] as int? ?? 0,
       createdAt: map['created_at'] as String,
+      updatedAt: (map['updated_at'] as String?) ?? (map['created_at'] as String),
     );
   }
 
@@ -144,17 +156,20 @@ class StockMovement {
     double? purchasePriceWithoutVat,
     double? purchasePriceWithVat,
     double? vatRate,
-        int? supplierId,
-        int? warehouseId,
-        String? movementDate,
-        String? deliveryDate,
-        String? createdBy,
+    int? supplierId,
+    int? warehouseId,
+    int? customerId,
+    String? movementDate,
+    String? deliveryDate,
+    String? createdBy,
+    String? updatedBy,
     String? status,
     String? approvedBy,
     String? approvedAt,
     String? rejectionReason,
     int? synced,
     String? createdAt,
+    String? updatedAt,
   }) {
     return StockMovement(
       id: id ?? this.id,
@@ -174,17 +189,20 @@ class StockMovement {
       purchasePriceWithoutVat: purchasePriceWithoutVat ?? this.purchasePriceWithoutVat,
       purchasePriceWithVat: purchasePriceWithVat ?? this.purchasePriceWithVat,
       vatRate: vatRate ?? this.vatRate,
-          supplierId: supplierId ?? this.supplierId,
-          warehouseId: warehouseId ?? this.warehouseId,
-          movementDate: movementDate ?? this.movementDate,
-          deliveryDate: deliveryDate ?? this.deliveryDate,
-          createdBy: createdBy ?? this.createdBy,
+      supplierId: supplierId ?? this.supplierId,
+      warehouseId: warehouseId ?? this.warehouseId,
+      customerId: customerId ?? this.customerId,
+      movementDate: movementDate ?? this.movementDate,
+      deliveryDate: deliveryDate ?? this.deliveryDate,
+      createdBy: createdBy ?? this.createdBy,
+      updatedBy: updatedBy ?? this.updatedBy,
       status: status ?? this.status,
       approvedBy: approvedBy ?? this.approvedBy,
       approvedAt: approvedAt ?? this.approvedAt,
       rejectionReason: rejectionReason ?? this.rejectionReason,
       synced: synced ?? this.synced,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }

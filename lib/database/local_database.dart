@@ -26,7 +26,7 @@ class LocalDatabase {
 
     return await openDatabase(
       path,
-      version: 20, // Add default_vat_rate to suppliers
+      version: 25, // Add customers.pallet_deposit_price (€/ks)
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -111,6 +111,7 @@ class LocalDatabase {
           vat_rate REAL,
           supplier_id INTEGER,
           warehouse_id INTEGER,
+          customer_id INTEGER,
           movement_date TEXT NOT NULL,
           created_by TEXT NOT NULL,
             synced INTEGER DEFAULT 0,
@@ -235,6 +236,89 @@ class LocalDatabase {
         await db.execute('ALTER TABLE suppliers ADD COLUMN default_vat_rate REAL');
       } catch (e) {
         // Column might already exist, ignore error
+        print('Migration note: $e');
+      }
+    }
+
+    if (oldVersion < 21) {
+      // Add customer_id to stock_movements (issue header binding to customers)
+      try {
+        await db.execute('ALTER TABLE stock_movements ADD COLUMN customer_id INTEGER');
+      } catch (e) {
+        // Column might already exist, ignore error
+        print('Migration note: $e');
+      }
+    }
+
+    if (oldVersion < 22) {
+      // Draft documents (offline/local only). Used for "rozpracovaná výdajka".
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS draft_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doc_type TEXT NOT NULL,
+            title TEXT,
+            data TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_draft_documents_type ON draft_documents(doc_type)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_draft_documents_updated_at ON draft_documents(updated_at)');
+      } catch (e) {
+        print('Migration note: $e');
+      }
+    }
+
+    if (oldVersion < 23) {
+      // Add audit columns to stock_movements for edit tracking
+      try {
+        await db.execute('ALTER TABLE stock_movements ADD COLUMN updated_at TEXT');
+      } catch (e) {
+        print('Migration note: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE stock_movements ADD COLUMN updated_by TEXT');
+      } catch (e) {
+        print('Migration note: $e');
+      }
+      try {
+        await db.execute("UPDATE stock_movements SET updated_at = COALESCE(updated_at, created_at)");
+      } catch (e) {
+        print('Migration note: $e');
+      }
+    }
+
+    if (oldVersion < 24) {
+      // Pallet deposits / movements (záloha paliet)
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS pallet_movements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            direction TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            movement_date TEXT NOT NULL,
+            notes TEXT,
+            created_by TEXT NOT NULL,
+            synced INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
+          )
+        ''');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_pallet_movements_customer ON pallet_movements(customer_id)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_pallet_movements_date ON pallet_movements(movement_date)');
+      } catch (e) {
+        print('Migration note: $e');
+      }
+    }
+
+    if (oldVersion < 25) {
+      // Customers: add price per pallet deposit (€/ks)
+      try {
+        await db.execute('ALTER TABLE customers ADD COLUMN pallet_deposit_price REAL');
+      } catch (e) {
         print('Migration note: $e');
       }
     }
@@ -871,9 +955,11 @@ class LocalDatabase {
         vat_rate REAL,
         supplier_id INTEGER,
         warehouse_id INTEGER,
+        customer_id INTEGER,
         movement_date TEXT NOT NULL,
         delivery_date TEXT,
         created_by TEXT NOT NULL,
+        updated_by TEXT,
         status TEXT DEFAULT 'pending',
         approved_by TEXT,
         approved_at TEXT,
@@ -881,11 +967,46 @@ class LocalDatabase {
         receipt_number TEXT,
         synced INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
-        FOREIGN KEY (material_id) REFERENCES materials(id)
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (material_id) REFERENCES materials(id),
+        FOREIGN KEY (customer_id) REFERENCES customers(id)
       )
     ''');
     await db.execute('CREATE INDEX idx_stock_movements_status ON stock_movements(status)');
     await db.execute('CREATE INDEX idx_stock_movements_receipt_number ON stock_movements(receipt_number)');
+
+    // Pallet deposits / movements (záloha paliet) - linked to customers
+    await db.execute('''
+      CREATE TABLE pallet_movements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        direction TEXT NOT NULL, -- issued | returned
+        quantity REAL NOT NULL,
+        movement_date TEXT NOT NULL,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        synced INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (customer_id) REFERENCES customers(id)
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_pallet_movements_customer ON pallet_movements(customer_id)');
+    await db.execute('CREATE INDEX idx_pallet_movements_date ON pallet_movements(movement_date)');
+
+    // Draft documents (offline/local only)
+    await db.execute('''
+      CREATE TABLE draft_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        doc_type TEXT NOT NULL,
+        title TEXT,
+        data TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_draft_documents_type ON draft_documents(doc_type)');
+    await db.execute('CREATE INDEX idx_draft_documents_updated_at ON draft_documents(updated_at)');
 
     // Inventories table
     await db.execute('''
@@ -1052,6 +1173,7 @@ class LocalDatabase {
         contact_person TEXT,
         payment_terms TEXT,
         credit_limit REAL,
+        pallet_deposit_price REAL,
         price_list TEXT,
         notes TEXT,
         is_active INTEGER DEFAULT 1,
