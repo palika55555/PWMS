@@ -3,12 +3,16 @@
 nixPkgs = ["nodejs-18_x"]
 
 [phases.install]
-cmds = ["if [ -d backend ]; then cd backend; fi; npm install"]
+cmds = [
+  "if [ -f backend/package.json ]; then cd backend; elif [ -f package.json ]; then :; else echo 'ERROR: package.json not found. Set Railway Root Directory to backend.'; ls -la; exit 1; fi; npm install"
+]
 
 [phases.build]
-cmds = ["if [ -d backend ]; then cd backend; fi; npm run migrate || true"]
+cmds = [
+  "if [ -f backend/package.json ]; then cd backend; elif [ -f package.json ]; then :; else echo 'ERROR: package.json not found. Set Railway Root Directory to backend.'; ls -la; exit 1; fi; npm run migrate || true"
+]
 
 [start]
-cmd = "if [ -d backend ]; then cd backend; fi; npm run migrate && npm start"
+cmd = "if [ -f backend/package.json ]; then cd backend; elif [ -f package.json ]; then :; else echo 'ERROR: package.json not found. Set Railway Root Directory to backend.'; ls -la; exit 1; fi; npm run migrate && npm start"
 
 
