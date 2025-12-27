@@ -372,6 +372,26 @@ async function runMigrations() {
     } else {
       console.log('Suppliers table already exists');
     }
+    await ensureMissingColumns(client, 'suppliers', [
+      { name: 'name', sql: 'name TEXT NOT NULL' },
+      { name: 'company_id', sql: 'company_id TEXT' },
+      { name: 'tax_id', sql: 'tax_id TEXT' },
+      { name: 'vat_id', sql: 'vat_id TEXT' },
+      { name: 'address', sql: 'address TEXT' },
+      { name: 'city', sql: 'city TEXT' },
+      { name: 'zip_code', sql: 'zip_code TEXT' },
+      { name: 'country', sql: 'country TEXT' },
+      { name: 'phone', sql: 'phone TEXT' },
+      { name: 'email', sql: 'email TEXT' },
+      { name: 'website', sql: 'website TEXT' },
+      { name: 'contact_person', sql: 'contact_person TEXT' },
+      { name: 'payment_terms', sql: 'payment_terms TEXT' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'default_vat_rate', sql: 'default_vat_rate NUMERIC' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Customers table
     const customersExists = await checkTableExists(client, 'customers');
@@ -405,6 +425,28 @@ async function runMigrations() {
     } else {
       console.log('Customers table already exists');
     }
+    await ensureMissingColumns(client, 'customers', [
+      { name: 'name', sql: 'name TEXT NOT NULL' },
+      { name: 'company_id', sql: 'company_id TEXT' },
+      { name: 'tax_id', sql: 'tax_id TEXT' },
+      { name: 'vat_id', sql: 'vat_id TEXT' },
+      { name: 'address', sql: 'address TEXT' },
+      { name: 'city', sql: 'city TEXT' },
+      { name: 'zip_code', sql: 'zip_code TEXT' },
+      { name: 'country', sql: 'country TEXT' },
+      { name: 'phone', sql: 'phone TEXT' },
+      { name: 'email', sql: 'email TEXT' },
+      { name: 'website', sql: 'website TEXT' },
+      { name: 'contact_person', sql: 'contact_person TEXT' },
+      { name: 'payment_terms', sql: 'payment_terms TEXT' },
+      { name: 'credit_limit', sql: 'credit_limit NUMERIC' },
+      { name: 'price_list', sql: 'price_list TEXT' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'is_active', sql: 'is_active BOOLEAN DEFAULT TRUE' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Warehouses table
     const warehousesExists = await checkTableExists(client, 'warehouses');
@@ -432,6 +474,22 @@ async function runMigrations() {
     } else {
       console.log('Warehouses table already exists');
     }
+    await ensureMissingColumns(client, 'warehouses', [
+      { name: 'name', sql: 'name TEXT NOT NULL' },
+      { name: 'code', sql: 'code TEXT' },
+      { name: 'address', sql: 'address TEXT' },
+      { name: 'city', sql: 'city TEXT' },
+      { name: 'zip_code', sql: 'zip_code TEXT' },
+      { name: 'country', sql: 'country TEXT' },
+      { name: 'phone', sql: 'phone TEXT' },
+      { name: 'email', sql: 'email TEXT' },
+      { name: 'manager', sql: 'manager TEXT' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'is_active', sql: 'is_active BOOLEAN DEFAULT TRUE' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Warehouse locations table
     const warehouseLocationsExists = await checkTableExists(client, 'warehouse_locations');
@@ -460,6 +518,23 @@ async function runMigrations() {
     } else {
       console.log('Warehouse_locations table already exists');
     }
+    await ensureMissingColumns(client, 'warehouse_locations', [
+      { name: 'name', sql: 'name TEXT NOT NULL' },
+      { name: 'code', sql: 'code TEXT' },
+      { name: 'address', sql: 'address TEXT' },
+      { name: 'city', sql: 'city TEXT' },
+      { name: 'zip_code', sql: 'zip_code TEXT' },
+      { name: 'country', sql: 'country TEXT' },
+      { name: 'contact_person', sql: 'contact_person TEXT' },
+      { name: 'phone', sql: 'phone TEXT' },
+      { name: 'email', sql: 'email TEXT' },
+      { name: 'is_active', sql: 'is_active BOOLEAN DEFAULT TRUE' },
+      { name: 'is_default', sql: 'is_default BOOLEAN DEFAULT FALSE' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Stock movements table
     const stockMovementsExists = await checkTableExists(client, 'stock_movements');
@@ -500,6 +575,35 @@ async function runMigrations() {
     } else {
       console.log('Stock_movements table already exists');
     }
+    await ensureMissingColumns(client, 'stock_movements', [
+      { name: 'movement_type', sql: 'movement_type TEXT NOT NULL' },
+      { name: 'material_id', sql: 'material_id INTEGER' },
+      { name: 'quantity', sql: 'quantity NUMERIC NOT NULL' },
+      { name: 'unit', sql: 'unit TEXT NOT NULL' },
+      { name: 'document_number', sql: 'document_number TEXT' },
+      { name: 'supplier_name', sql: 'supplier_name TEXT' },
+      { name: 'recipient_name', sql: 'recipient_name TEXT' },
+      { name: 'reason', sql: 'reason TEXT' },
+      { name: 'location', sql: 'location TEXT' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'product_note', sql: 'product_note TEXT' },
+      { name: 'expiration_date', sql: 'expiration_date TEXT' },
+      { name: 'purchase_price_without_vat', sql: 'purchase_price_without_vat NUMERIC' },
+      { name: 'purchase_price_with_vat', sql: 'purchase_price_with_vat NUMERIC' },
+      { name: 'vat_rate', sql: 'vat_rate NUMERIC' },
+      { name: 'supplier_id', sql: 'supplier_id INTEGER' },
+      { name: 'warehouse_id', sql: 'warehouse_id INTEGER' },
+      { name: 'movement_date', sql: 'movement_date TEXT NOT NULL' },
+      { name: 'delivery_date', sql: 'delivery_date TEXT' },
+      { name: 'created_by', sql: 'created_by TEXT NOT NULL' },
+      { name: 'status', sql: "status TEXT DEFAULT 'pending'" },
+      { name: 'approved_by', sql: 'approved_by TEXT' },
+      { name: 'approved_at', sql: 'approved_at TEXT' },
+      { name: 'rejection_reason', sql: 'rejection_reason TEXT' },
+      { name: 'receipt_number', sql: 'receipt_number TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Inventories table
     const inventoriesExists = await checkTableExists(client, 'inventories');
@@ -521,6 +625,16 @@ async function runMigrations() {
     } else {
       console.log('Inventories table already exists');
     }
+    await ensureMissingColumns(client, 'inventories', [
+      { name: 'inventory_date', sql: 'inventory_date TEXT NOT NULL' },
+      { name: 'status', sql: "status TEXT DEFAULT 'planned'" },
+      { name: 'location', sql: 'location TEXT' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'created_by', sql: 'created_by TEXT NOT NULL' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Inventory items table
     const inventoryItemsExists = await checkTableExists(client, 'inventory_items');
@@ -543,6 +657,17 @@ async function runMigrations() {
     } else {
       console.log('Inventory_items table already exists');
     }
+    await ensureMissingColumns(client, 'inventory_items', [
+      { name: 'inventory_id', sql: 'inventory_id INTEGER' },
+      { name: 'material_id', sql: 'material_id INTEGER' },
+      { name: 'recorded_quantity', sql: 'recorded_quantity NUMERIC NOT NULL' },
+      { name: 'actual_quantity', sql: 'actual_quantity NUMERIC NOT NULL' },
+      { name: 'difference', sql: 'difference NUMERIC NOT NULL' },
+      { name: 'unit', sql: 'unit TEXT NOT NULL' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Price history table
     const priceHistoryExists = await checkTableExists(client, 'price_history');
@@ -568,6 +693,20 @@ async function runMigrations() {
     } else {
       console.log('Price_history table already exists');
     }
+    await ensureMissingColumns(client, 'price_history', [
+      { name: 'material_id', sql: 'material_id INTEGER' },
+      { name: 'supplier_id', sql: 'supplier_id INTEGER' },
+      { name: 'quantity', sql: 'quantity NUMERIC NOT NULL' },
+      { name: 'purchase_price_without_vat', sql: 'purchase_price_without_vat NUMERIC NOT NULL' },
+      { name: 'purchase_price_with_vat', sql: 'purchase_price_with_vat NUMERIC NOT NULL' },
+      { name: 'sale_price', sql: 'sale_price NUMERIC' },
+      { name: 'vat_rate', sql: 'vat_rate NUMERIC DEFAULT 20.0' },
+      { name: 'price_date', sql: 'price_date TEXT NOT NULL' },
+      { name: 'document_number', sql: 'document_number TEXT' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Unit conversions table
     const unitConversionsExists = await checkTableExists(client, 'unit_conversions');
@@ -589,6 +728,16 @@ async function runMigrations() {
     } else {
       console.log('Unit_conversions table already exists');
     }
+    await ensureMissingColumns(client, 'unit_conversions', [
+      { name: 'material_id', sql: 'material_id INTEGER' },
+      { name: 'from_unit', sql: 'from_unit TEXT NOT NULL' },
+      { name: 'to_unit', sql: 'to_unit TEXT NOT NULL' },
+      { name: 'conversion_factor', sql: 'conversion_factor NUMERIC NOT NULL' },
+      { name: 'is_default', sql: 'is_default BOOLEAN DEFAULT FALSE' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Product variants table
     const productVariantsExists = await checkTableExists(client, 'product_variants');
@@ -612,6 +761,18 @@ async function runMigrations() {
     } else {
       console.log('Product_variants table already exists');
     }
+    await ensureMissingColumns(client, 'product_variants', [
+      { name: 'material_id', sql: 'material_id INTEGER' },
+      { name: 'variant_type', sql: 'variant_type TEXT NOT NULL' },
+      { name: 'variant_value', sql: 'variant_value TEXT NOT NULL' },
+      { name: 'variant_code', sql: 'variant_code TEXT' },
+      { name: 'ean_code', sql: 'ean_code TEXT' },
+      { name: 'additional_price', sql: 'additional_price NUMERIC' },
+      { name: 'is_active', sql: 'is_active BOOLEAN DEFAULT TRUE' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Product accessories table
     const productAccessoriesExists = await checkTableExists(client, 'product_accessories');
@@ -633,6 +794,16 @@ async function runMigrations() {
     } else {
       console.log('Product_accessories table already exists');
     }
+    await ensureMissingColumns(client, 'product_accessories', [
+      { name: 'material_id', sql: 'material_id INTEGER' },
+      { name: 'accessory_material_id', sql: 'accessory_material_id INTEGER' },
+      { name: 'relation_type', sql: 'relation_type TEXT NOT NULL' },
+      { name: 'quantity', sql: 'quantity INTEGER' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Purchase price lists table
     const purchasePriceListsExists = await checkTableExists(client, 'purchase_price_lists');
@@ -656,6 +827,18 @@ async function runMigrations() {
     } else {
       console.log('Purchase_price_lists table already exists');
     }
+    await ensureMissingColumns(client, 'purchase_price_lists', [
+      { name: 'supplier_id', sql: 'supplier_id INTEGER' },
+      { name: 'name', sql: 'name TEXT NOT NULL' },
+      { name: 'code', sql: 'code TEXT' },
+      { name: 'valid_from', sql: 'valid_from TEXT NOT NULL' },
+      { name: 'valid_to', sql: 'valid_to TEXT' },
+      { name: 'is_active', sql: 'is_active BOOLEAN DEFAULT TRUE' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Purchase price list items table
     const purchasePriceListItemsExists = await checkTableExists(client, 'purchase_price_list_items');
@@ -679,6 +862,18 @@ async function runMigrations() {
     } else {
       console.log('Purchase_price_list_items table already exists');
     }
+    await ensureMissingColumns(client, 'purchase_price_list_items', [
+      { name: 'price_list_id', sql: 'price_list_id INTEGER' },
+      { name: 'material_id', sql: 'material_id INTEGER' },
+      { name: 'price_without_vat', sql: 'price_without_vat NUMERIC NOT NULL' },
+      { name: 'price_with_vat', sql: 'price_with_vat NUMERIC NOT NULL' },
+      { name: 'vat_rate', sql: 'vat_rate NUMERIC DEFAULT 20.0' },
+      { name: 'min_quantity', sql: 'min_quantity NUMERIC' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Auto orders table
     const autoOrdersExists = await checkTableExists(client, 'auto_orders');
@@ -704,6 +899,20 @@ async function runMigrations() {
     } else {
       console.log('Auto_orders table already exists');
     }
+    await ensureMissingColumns(client, 'auto_orders', [
+      { name: 'material_id', sql: 'material_id INTEGER' },
+      { name: 'supplier_id', sql: 'supplier_id INTEGER' },
+      { name: 'suggested_quantity', sql: 'suggested_quantity NUMERIC NOT NULL' },
+      { name: 'current_stock', sql: 'current_stock NUMERIC NOT NULL' },
+      { name: 'min_stock', sql: 'min_stock NUMERIC NOT NULL' },
+      { name: 'max_stock', sql: 'max_stock NUMERIC DEFAULT 0' },
+      { name: 'reason', sql: 'reason TEXT NOT NULL' },
+      { name: 'status', sql: "status TEXT DEFAULT 'pending'" },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'ordered_at', sql: 'ordered_at TEXT' },
+    ]);
 
     // Warehouse closings table
     const warehouseClosingsExists = await checkTableExists(client, 'warehouse_closings');
@@ -726,6 +935,17 @@ async function runMigrations() {
     } else {
       console.log('Warehouse_closings table already exists');
     }
+    await ensureMissingColumns(client, 'warehouse_closings', [
+      { name: 'closing_date', sql: 'closing_date TEXT NOT NULL' },
+      { name: 'period_from', sql: 'period_from TEXT NOT NULL' },
+      { name: 'period_to', sql: 'period_to TEXT NOT NULL' },
+      { name: 'status', sql: "status TEXT DEFAULT 'open'" },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'created_by', sql: 'created_by TEXT NOT NULL' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'closed_at', sql: 'closed_at TEXT' },
+    ]);
 
     // Audit logs table
     const auditLogsExists = await checkTableExists(client, 'audit_logs');
@@ -751,6 +971,20 @@ async function runMigrations() {
     } else {
       console.log('Audit_logs table already exists');
     }
+    await ensureMissingColumns(client, 'audit_logs', [
+      { name: 'entity_type', sql: 'entity_type TEXT NOT NULL' },
+      { name: 'entity_id', sql: 'entity_id INTEGER' },
+      { name: 'action', sql: 'action TEXT NOT NULL' },
+      { name: 'old_value', sql: 'old_value TEXT' },
+      { name: 'new_value', sql: 'new_value TEXT' },
+      { name: 'user_id', sql: 'user_id TEXT NOT NULL' },
+      { name: 'user_name', sql: 'user_name TEXT NOT NULL' },
+      { name: 'ip_address', sql: 'ip_address TEXT' },
+      { name: 'user_agent', sql: 'user_agent TEXT' },
+      { name: 'notes', sql: 'notes TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
 
     // Create indexes
     await client.query(`
