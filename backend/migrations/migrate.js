@@ -1,7 +1,7 @@
 const pool = require('../config/database');
 
-async function checkTableExists(tableName) {
-  const result = await pool.query(
+async function checkTableExists(client, tableName) {
+  const result = await client.query(
     `SELECT EXISTS (
       SELECT FROM information_schema.tables 
       WHERE table_schema = 'public' 
@@ -12,6 +12,71 @@ async function checkTableExists(tableName) {
   return result.rows[0].exists;
 }
 
+async function getColumnType(client, tableName, columnName) {
+  const result = await client.query(
+    `SELECT data_type
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+    [tableName, columnName]
+  );
+  return result.rows[0]?.data_type;
+}
+
+async function ensureMaterialsIdIsInteger(client) {
+  const type = await getColumnType(client, 'materials', 'id');
+  if (!type) return;
+
+  if (type === 'integer') return;
+
+  // Common bad state: id is varchar/text from previous schema.
+  if (type === 'character varying' || type === 'text') {
+    const nonNumeric = await client.query(
+      `SELECT COUNT(*)::int AS cnt
+       FROM materials
+       WHERE id IS NOT NULL AND id !~ '^[0-9]+$'`
+    );
+
+    if ((nonNumeric.rows[0]?.cnt ?? 0) > 0) {
+      const forceReset = process.env.PWMS_FORCE_RESET_DB === '1';
+      if (forceReset) {
+        console.warn('[migrate] PWMS_FORCE_RESET_DB=1 -> dropping existing tables and recreating schema');
+        await client.query('DROP TABLE IF EXISTS products CASCADE');
+        await client.query('DROP TABLE IF EXISTS quality_tests CASCADE');
+        await client.query('DROP TABLE IF EXISTS batch_materials CASCADE');
+        await client.query('DROP TABLE IF EXISTS batches CASCADE');
+        await client.query('DROP TABLE IF EXISTS recipe_aggregates CASCADE');
+        await client.query('DROP TABLE IF EXISTS recipes CASCADE');
+        await client.query('DROP TABLE IF EXISTS aggregate_fractions CASCADE');
+        await client.query('DROP TABLE IF EXISTS materials CASCADE');
+        return; // caller will recreate tables
+      }
+
+      throw new Error(
+        `[migrate] materials.id is ${type} but contains non-numeric values; cannot auto-convert to integer. ` +
+          `Either reset the Railway Postgres database or set PWMS_FORCE_RESET_DB=1 to drop tables.`
+      );
+    }
+
+    console.warn(`[migrate] Converting materials.id from ${type} -> integer (numeric values detected)`);
+    await client.query(`ALTER TABLE materials ALTER COLUMN id TYPE INTEGER USING id::integer`);
+
+    // Ensure sequence exists and default is set, so inserts keep working.
+    await client.query(`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'materials_id_seq') THEN
+        CREATE SEQUENCE materials_id_seq;
+      END IF;
+    END $$;`);
+
+    await client.query(`ALTER TABLE materials ALTER COLUMN id SET DEFAULT nextval('materials_id_seq')`);
+    await client.query(
+      `SELECT setval('materials_id_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM materials), 1))`
+    );
+    return;
+  }
+
+  throw new Error(`[migrate] Unsupported materials.id type: ${type}`);
+}
+
 async function runMigrations() {
   const client = await pool.connect();
   
@@ -19,7 +84,7 @@ async function runMigrations() {
     await client.query('BEGIN');
 
     // Materials table
-    const materialsExists = await checkTableExists('materials');
+    const materialsExists = await checkTableExists(client, 'materials');
     if (!materialsExists) {
       await client.query(`
         CREATE TABLE materials (
@@ -37,10 +102,12 @@ async function runMigrations() {
       console.log('Created materials table');
     } else {
       console.log('Materials table already exists');
+      // Repair legacy schemas where materials.id is not integer.
+      await ensureMaterialsIdIsInteger(client);
     }
 
     // Aggregate fractions table
-    const fractionsExists = await checkTableExists('aggregate_fractions');
+    const fractionsExists = await checkTableExists(client, 'aggregate_fractions');
     if (!fractionsExists) {
       await client.query(`
         CREATE TABLE aggregate_fractions (
@@ -58,7 +125,7 @@ async function runMigrations() {
     }
 
     // Recipes table
-    const recipesExists = await checkTableExists('recipes');
+    const recipesExists = await checkTableExists(client, 'recipes');
     if (!recipesExists) {
       await client.query(`
         CREATE TABLE recipes (
@@ -81,7 +148,7 @@ async function runMigrations() {
     }
 
     // Recipe aggregates table
-    const recipeAggregatesExists = await checkTableExists('recipe_aggregates');
+    const recipeAggregatesExists = await checkTableExists(client, 'recipe_aggregates');
     if (!recipeAggregatesExists) {
       await client.query(`
         CREATE TABLE recipe_aggregates (
@@ -99,7 +166,7 @@ async function runMigrations() {
     }
 
     // Batches table
-    const batchesExists = await checkTableExists('batches');
+    const batchesExists = await checkTableExists(client, 'batches');
     if (!batchesExists) {
       await client.query(`
         CREATE TABLE batches (
@@ -123,7 +190,7 @@ async function runMigrations() {
     }
 
     // Batch materials table
-    const batchMaterialsExists = await checkTableExists('batch_materials');
+    const batchMaterialsExists = await checkTableExists(client, 'batch_materials');
     if (!batchMaterialsExists) {
       await client.query(`
         CREATE TABLE batch_materials (
@@ -142,7 +209,7 @@ async function runMigrations() {
     }
 
     // Quality tests table
-    const qualityTestsExists = await checkTableExists('quality_tests');
+    const qualityTestsExists = await checkTableExists(client, 'quality_tests');
     if (!qualityTestsExists) {
       await client.query(`
         CREATE TABLE quality_tests (
@@ -164,7 +231,7 @@ async function runMigrations() {
     }
 
     // Products table
-    const productsExists = await checkTableExists('products');
+    const productsExists = await checkTableExists(client, 'products');
     if (!productsExists) {
       await client.query(`
         CREATE TABLE products (
