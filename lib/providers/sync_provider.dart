@@ -190,7 +190,8 @@ class SyncProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Keep this in sync with backend migrations / safe snapshot list.
+      // Should match backend allowlist (backend/routes/sync.js -> ALLOWED_TABLES).
+      // We'll only upload tables that also exist locally.
       const tables = <String>[
         'materials',
         'aggregate_fractions',
@@ -200,18 +201,38 @@ class SyncProvider with ChangeNotifier {
         'batch_materials',
         'quality_tests',
         'products',
+        'stock_movements',
+        'inventories',
+        'inventory_items',
+        'suppliers',
+        'customers',
+        'warehouses',
+        'warehouse_locations',
+        'unit_conversions',
+        'product_variants',
+        'product_accessories',
+        'purchase_price_lists',
+        'purchase_price_list_items',
+        'price_history',
+        'auto_orders',
+        'warehouse_closings',
+        'audit_logs',
       ];
 
       final db = await LocalDatabase.instance.database;
 
       for (final table in tables) {
+        // Skip if the table doesn't exist locally.
+        final exists = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+          [table],
+        );
+        if (exists.isEmpty) continue;
+
         final rows = await db.query(table);
         for (final row in rows) {
-          final id = row['id'];
-          if (id is! int) {
-            // If an unexpected schema sneaks in, skip row but keep going.
-            continue;
-          }
+          final id = _coerceIdToInt(row['id']);
+          if (id == null) continue;
 
           final data = Map<String, dynamic>.from(row);
           data.remove('synced'); // local-only
@@ -224,7 +245,12 @@ class SyncProvider with ChangeNotifier {
           if (resp.statusCode == 200 || resp.statusCode == 201) {
             await _queue.trySetSyncedFlag(table: table, recordId: id, synced: 1);
           } else {
-            _lastSyncError = 'ERROR (HTTP ${resp.statusCode}) pri full upload $table#$id';
+            String details = '';
+            final body = resp.data;
+            if (body is Map && body['error'] != null) {
+              details = ': ${body['error']}';
+            }
+            _lastSyncError = 'ERROR (HTTP ${resp.statusCode}) pri full upload $table#$id$details';
             notifyListeners();
             // Stop early so user can fix server/schema issues.
             return;
@@ -237,6 +263,13 @@ class SyncProvider with ChangeNotifier {
       _isSyncing = false;
       notifyListeners();
     }
+  }
+
+  int? _coerceIdToInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
   }
 
   /// Server -> PC overwrite-local sync.

@@ -24,6 +24,22 @@ async function getColumnType(client, tableName, columnName) {
 
 async function dropAllTables(client) {
   // Drop in child->parent order (CASCADE for safety)
+  await client.query('DROP TABLE IF EXISTS audit_logs CASCADE');
+  await client.query('DROP TABLE IF EXISTS warehouse_closings CASCADE');
+  await client.query('DROP TABLE IF EXISTS auto_orders CASCADE');
+  await client.query('DROP TABLE IF EXISTS purchase_price_list_items CASCADE');
+  await client.query('DROP TABLE IF EXISTS purchase_price_lists CASCADE');
+  await client.query('DROP TABLE IF EXISTS product_accessories CASCADE');
+  await client.query('DROP TABLE IF EXISTS product_variants CASCADE');
+  await client.query('DROP TABLE IF EXISTS unit_conversions CASCADE');
+  await client.query('DROP TABLE IF EXISTS price_history CASCADE');
+  await client.query('DROP TABLE IF EXISTS inventory_items CASCADE');
+  await client.query('DROP TABLE IF EXISTS inventories CASCADE');
+  await client.query('DROP TABLE IF EXISTS stock_movements CASCADE');
+  await client.query('DROP TABLE IF EXISTS warehouse_locations CASCADE');
+  await client.query('DROP TABLE IF EXISTS warehouses CASCADE');
+  await client.query('DROP TABLE IF EXISTS customers CASCADE');
+  await client.query('DROP TABLE IF EXISTS suppliers CASCADE');
   await client.query('DROP TABLE IF EXISTS products CASCADE');
   await client.query('DROP TABLE IF EXISTS quality_tests CASCADE');
   await client.query('DROP TABLE IF EXISTS batch_materials CASCADE');
@@ -254,6 +270,416 @@ async function runMigrations() {
       console.log('Products table already exists');
     }
 
+    // Suppliers table
+    const suppliersExists = await checkTableExists(client, 'suppliers');
+    if (!suppliersExists) {
+      await client.query(`
+        CREATE TABLE suppliers (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          company_id TEXT,
+          tax_id TEXT,
+          vat_id TEXT,
+          address TEXT,
+          city TEXT,
+          zip_code TEXT,
+          country TEXT,
+          phone TEXT,
+          email TEXT,
+          website TEXT,
+          contact_person TEXT,
+          payment_terms TEXT,
+          notes TEXT,
+          default_vat_rate NUMERIC,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created suppliers table');
+    } else {
+      console.log('Suppliers table already exists');
+    }
+
+    // Customers table
+    const customersExists = await checkTableExists(client, 'customers');
+    if (!customersExists) {
+      await client.query(`
+        CREATE TABLE customers (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          company_id TEXT,
+          tax_id TEXT,
+          vat_id TEXT,
+          address TEXT,
+          city TEXT,
+          zip_code TEXT,
+          country TEXT,
+          phone TEXT,
+          email TEXT,
+          website TEXT,
+          contact_person TEXT,
+          payment_terms TEXT,
+          credit_limit NUMERIC,
+          price_list TEXT,
+          notes TEXT,
+          is_active BOOLEAN DEFAULT TRUE,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created customers table');
+    } else {
+      console.log('Customers table already exists');
+    }
+
+    // Warehouses table
+    const warehousesExists = await checkTableExists(client, 'warehouses');
+    if (!warehousesExists) {
+      await client.query(`
+        CREATE TABLE warehouses (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          code TEXT,
+          address TEXT,
+          city TEXT,
+          zip_code TEXT,
+          country TEXT,
+          phone TEXT,
+          email TEXT,
+          manager TEXT,
+          notes TEXT,
+          is_active BOOLEAN DEFAULT TRUE,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created warehouses table');
+    } else {
+      console.log('Warehouses table already exists');
+    }
+
+    // Warehouse locations table
+    const warehouseLocationsExists = await checkTableExists(client, 'warehouse_locations');
+    if (!warehouseLocationsExists) {
+      await client.query(`
+        CREATE TABLE warehouse_locations (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          code TEXT,
+          address TEXT,
+          city TEXT,
+          zip_code TEXT,
+          country TEXT,
+          contact_person TEXT,
+          phone TEXT,
+          email TEXT,
+          is_active BOOLEAN DEFAULT TRUE,
+          is_default BOOLEAN DEFAULT FALSE,
+          notes TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created warehouse_locations table');
+    } else {
+      console.log('Warehouse_locations table already exists');
+    }
+
+    // Stock movements table
+    const stockMovementsExists = await checkTableExists(client, 'stock_movements');
+    if (!stockMovementsExists) {
+      await client.query(`
+        CREATE TABLE stock_movements (
+          id SERIAL PRIMARY KEY,
+          movement_type TEXT NOT NULL,
+          material_id INTEGER REFERENCES materials(id) ON DELETE SET NULL,
+          quantity NUMERIC NOT NULL,
+          unit TEXT NOT NULL,
+          document_number TEXT,
+          supplier_name TEXT,
+          recipient_name TEXT,
+          reason TEXT,
+          location TEXT,
+          notes TEXT,
+          product_note TEXT,
+          expiration_date TEXT,
+          purchase_price_without_vat NUMERIC,
+          purchase_price_with_vat NUMERIC,
+          vat_rate NUMERIC,
+          supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+          warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL,
+          movement_date TEXT NOT NULL,
+          delivery_date TEXT,
+          created_by TEXT NOT NULL,
+          status TEXT DEFAULT 'pending',
+          approved_by TEXT,
+          approved_at TEXT,
+          rejection_reason TEXT,
+          receipt_number TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created stock_movements table');
+    } else {
+      console.log('Stock_movements table already exists');
+    }
+
+    // Inventories table
+    const inventoriesExists = await checkTableExists(client, 'inventories');
+    if (!inventoriesExists) {
+      await client.query(`
+        CREATE TABLE inventories (
+          id SERIAL PRIMARY KEY,
+          inventory_date TEXT NOT NULL,
+          status TEXT DEFAULT 'planned',
+          location TEXT,
+          notes TEXT,
+          created_by TEXT NOT NULL,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created inventories table');
+    } else {
+      console.log('Inventories table already exists');
+    }
+
+    // Inventory items table
+    const inventoryItemsExists = await checkTableExists(client, 'inventory_items');
+    if (!inventoryItemsExists) {
+      await client.query(`
+        CREATE TABLE inventory_items (
+          id SERIAL PRIMARY KEY,
+          inventory_id INTEGER REFERENCES inventories(id) ON DELETE CASCADE,
+          material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+          recorded_quantity NUMERIC NOT NULL,
+          actual_quantity NUMERIC NOT NULL,
+          difference NUMERIC NOT NULL,
+          unit TEXT NOT NULL,
+          notes TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created inventory_items table');
+    } else {
+      console.log('Inventory_items table already exists');
+    }
+
+    // Price history table
+    const priceHistoryExists = await checkTableExists(client, 'price_history');
+    if (!priceHistoryExists) {
+      await client.query(`
+        CREATE TABLE price_history (
+          id SERIAL PRIMARY KEY,
+          material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+          supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+          quantity NUMERIC NOT NULL,
+          purchase_price_without_vat NUMERIC NOT NULL,
+          purchase_price_with_vat NUMERIC NOT NULL,
+          sale_price NUMERIC,
+          vat_rate NUMERIC DEFAULT 20.0,
+          price_date TEXT NOT NULL,
+          document_number TEXT,
+          notes TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created price_history table');
+    } else {
+      console.log('Price_history table already exists');
+    }
+
+    // Unit conversions table
+    const unitConversionsExists = await checkTableExists(client, 'unit_conversions');
+    if (!unitConversionsExists) {
+      await client.query(`
+        CREATE TABLE unit_conversions (
+          id SERIAL PRIMARY KEY,
+          material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+          from_unit TEXT NOT NULL,
+          to_unit TEXT NOT NULL,
+          conversion_factor NUMERIC NOT NULL,
+          is_default BOOLEAN DEFAULT FALSE,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created unit_conversions table');
+    } else {
+      console.log('Unit_conversions table already exists');
+    }
+
+    // Product variants table
+    const productVariantsExists = await checkTableExists(client, 'product_variants');
+    if (!productVariantsExists) {
+      await client.query(`
+        CREATE TABLE product_variants (
+          id SERIAL PRIMARY KEY,
+          material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+          variant_type TEXT NOT NULL,
+          variant_value TEXT NOT NULL,
+          variant_code TEXT,
+          ean_code TEXT,
+          additional_price NUMERIC,
+          is_active BOOLEAN DEFAULT TRUE,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created product_variants table');
+    } else {
+      console.log('Product_variants table already exists');
+    }
+
+    // Product accessories table
+    const productAccessoriesExists = await checkTableExists(client, 'product_accessories');
+    if (!productAccessoriesExists) {
+      await client.query(`
+        CREATE TABLE product_accessories (
+          id SERIAL PRIMARY KEY,
+          material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+          accessory_material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+          relation_type TEXT NOT NULL,
+          quantity INTEGER,
+          notes TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created product_accessories table');
+    } else {
+      console.log('Product_accessories table already exists');
+    }
+
+    // Purchase price lists table
+    const purchasePriceListsExists = await checkTableExists(client, 'purchase_price_lists');
+    if (!purchasePriceListsExists) {
+      await client.query(`
+        CREATE TABLE purchase_price_lists (
+          id SERIAL PRIMARY KEY,
+          supplier_id INTEGER REFERENCES suppliers(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          code TEXT,
+          valid_from TEXT NOT NULL,
+          valid_to TEXT,
+          is_active BOOLEAN DEFAULT TRUE,
+          notes TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created purchase_price_lists table');
+    } else {
+      console.log('Purchase_price_lists table already exists');
+    }
+
+    // Purchase price list items table
+    const purchasePriceListItemsExists = await checkTableExists(client, 'purchase_price_list_items');
+    if (!purchasePriceListItemsExists) {
+      await client.query(`
+        CREATE TABLE purchase_price_list_items (
+          id SERIAL PRIMARY KEY,
+          price_list_id INTEGER REFERENCES purchase_price_lists(id) ON DELETE CASCADE,
+          material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+          price_without_vat NUMERIC NOT NULL,
+          price_with_vat NUMERIC NOT NULL,
+          vat_rate NUMERIC DEFAULT 20.0,
+          min_quantity NUMERIC,
+          notes TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created purchase_price_list_items table');
+    } else {
+      console.log('Purchase_price_list_items table already exists');
+    }
+
+    // Auto orders table
+    const autoOrdersExists = await checkTableExists(client, 'auto_orders');
+    if (!autoOrdersExists) {
+      await client.query(`
+        CREATE TABLE auto_orders (
+          id SERIAL PRIMARY KEY,
+          material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+          supplier_id INTEGER REFERENCES suppliers(id) ON DELETE CASCADE,
+          suggested_quantity NUMERIC NOT NULL,
+          current_stock NUMERIC NOT NULL,
+          min_stock NUMERIC NOT NULL,
+          max_stock NUMERIC DEFAULT 0,
+          reason TEXT NOT NULL,
+          status TEXT DEFAULT 'pending',
+          notes TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          ordered_at TEXT
+        )
+      `);
+      console.log('Created auto_orders table');
+    } else {
+      console.log('Auto_orders table already exists');
+    }
+
+    // Warehouse closings table
+    const warehouseClosingsExists = await checkTableExists(client, 'warehouse_closings');
+    if (!warehouseClosingsExists) {
+      await client.query(`
+        CREATE TABLE warehouse_closings (
+          id SERIAL PRIMARY KEY,
+          closing_date TEXT NOT NULL,
+          period_from TEXT NOT NULL,
+          period_to TEXT NOT NULL,
+          status TEXT DEFAULT 'open',
+          notes TEXT,
+          created_by TEXT NOT NULL,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          closed_at TEXT
+        )
+      `);
+      console.log('Created warehouse_closings table');
+    } else {
+      console.log('Warehouse_closings table already exists');
+    }
+
+    // Audit logs table
+    const auditLogsExists = await checkTableExists(client, 'audit_logs');
+    if (!auditLogsExists) {
+      await client.query(`
+        CREATE TABLE audit_logs (
+          id SERIAL PRIMARY KEY,
+          entity_type TEXT NOT NULL,
+          entity_id INTEGER,
+          action TEXT NOT NULL,
+          old_value TEXT,
+          new_value TEXT,
+          user_id TEXT NOT NULL,
+          user_name TEXT NOT NULL,
+          ip_address TEXT,
+          user_agent TEXT,
+          notes TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Created audit_logs table');
+    } else {
+      console.log('Audit_logs table already exists');
+    }
+
     // Create indexes
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_batches_date ON batches(production_date)
@@ -264,6 +690,32 @@ async function runMigrations() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_products_batch ON products(batch_id)
     `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_warehouses_name ON warehouses(name)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_warehouses_code ON warehouses(code)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_stock_movements_date ON stock_movements(movement_date)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_stock_movements_type ON stock_movements(movement_type)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_stock_movements_material ON stock_movements(material_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_stock_movements_status ON stock_movements(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_stock_movements_receipt_number ON stock_movements(receipt_number)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_inventory_items_inventory ON inventory_items(inventory_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_price_history_material ON price_history(material_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history(price_date)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_unit_conversions_material ON unit_conversions(material_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_product_variants_material ON product_variants(material_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_product_accessories_material ON product_accessories(material_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_price_lists_supplier ON purchase_price_lists(supplier_id)`);
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_price_list_items_price_list ON purchase_price_list_items(price_list_id)`
+    );
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_auto_orders_status ON auto_orders(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_auto_orders_material ON auto_orders(material_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_warehouse_closings_date ON warehouse_closings(closing_date)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_warehouse_closings_status ON warehouse_closings(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_audit_logs_date ON audit_logs(created_at)`);
 
     await client.query('COMMIT');
     console.log('All migrations completed successfully');
