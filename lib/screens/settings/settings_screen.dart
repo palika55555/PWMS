@@ -7,6 +7,7 @@ import '../../providers/app_settings_provider.dart';
 import '../../providers/auto_backup_provider.dart';
 import '../../providers/sync_provider.dart';
 import '../../services/db_backup_service.dart';
+import '../../database/local_database.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -52,6 +53,22 @@ class SettingsScreen extends StatelessWidget {
                     onPressed: () => _showBackendUrlDialog(context),
                     child: const Text('Zmeniť'),
                   ),
+                ),
+                FutureBuilder<int>(
+                  future: _getSyncQueueCount(),
+                  builder: (context, snap) {
+                    final count = snap.data;
+                    return ListTile(
+                      leading: const Icon(Icons.queue),
+                      title: const Text('Čakajúce položky na odoslanie'),
+                      subtitle: Text(count == null ? 'Načítavam…' : '$count'),
+                      trailing: IconButton(
+                        tooltip: 'Obnoviť',
+                        onPressed: () => (context as Element).markNeedsBuild(),
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    );
+                  },
                 ),
                 SwitchListTile(
                   value: settings.syncUploadEnabled,
@@ -514,6 +531,15 @@ class SettingsScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  static Future<int> _getSyncQueueCount() async {
+    final db = await LocalDatabase.instance.database;
+    final rows = await db.rawQuery('SELECT COUNT(*) as cnt FROM sync_queue');
+    final v = rows.first['cnt'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 0;
   }
 }
 

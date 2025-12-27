@@ -9,7 +9,12 @@ import '../database/local_database.dart';
 import 'app_settings_provider.dart';
 
 class SyncProvider with ChangeNotifier {
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(
+    BaseOptions(
+      // We handle status codes manually so sync can report HTTP errors cleanly.
+      validateStatus: (_) => true,
+    ),
+  );
   final SyncQueueService _queue = SyncQueueService();
   StreamSubscription<ConnectivityResult>? _connectivitySub;
   bool _isSyncing = false;
@@ -90,9 +95,46 @@ class SyncProvider with ChangeNotifier {
         }
 
         Map<String, dynamic>? data;
-        final raw = item['data'];
-        if (raw is String && raw.isNotEmpty) {
-          data = (jsonDecode(raw) as Map).cast<String, dynamic>();
+
+        if (operation == 'upsert') {
+          // Always prefer the latest local row over the stored queue payload.
+          // This makes sync resilient to old non-JSON payloads and partial updates.
+          final db = await LocalDatabase.instance.database;
+          final rows = await db.query(
+            table,
+            where: 'id = ?',
+            whereArgs: [recordId],
+            limit: 1,
+          );
+          if (rows.isNotEmpty) {
+            data = Map<String, dynamic>.from(rows.first);
+          } else {
+            // Fallback to queued payload if the row no longer exists locally.
+            final raw = item['data'];
+            if (raw is String && raw.isNotEmpty) {
+              try {
+                data = (jsonDecode(raw) as Map).cast<String, dynamic>();
+              } catch (_) {
+                // Old format like "{id: 1, ...}" (not JSON) -> cannot decode
+                data = null;
+              }
+            }
+          }
+
+          if (data == null) {
+            _lastSyncError = 'ERROR pri sync $table#$recordId: lokálny záznam sa nenašiel';
+            notifyListeners();
+            continue; // keep queue item for now
+          }
+
+          // Never send local-only flags to the server schema.
+          data.remove('synced');
+        } else if (operation == 'delete') {
+          data = null;
+        } else {
+          _lastSyncError = 'ERROR pri sync: neznáma operácia $operation';
+          notifyListeners();
+          continue;
         }
 
         final response = await _dio.post(
@@ -107,8 +149,13 @@ class SyncProvider with ChangeNotifier {
         if (response.statusCode == 200 || response.statusCode == 201) {
           await _queue.removeQueueItem(queueId);
           await _queue.trySetSyncedFlag(table: table, recordId: recordId, synced: 1);
+        } else {
+          _lastSyncError = 'ERROR (HTTP ${response.statusCode}) pri sync $table#$recordId';
+          notifyListeners();
         }
       } catch (e) {
+        _lastSyncError = 'ERROR pri sync: $e';
+        notifyListeners();
         // Keep in queue for next sync
       }
     }
