@@ -96,7 +96,21 @@ class SyncProvider with ChangeNotifier {
 
         Map<String, dynamic>? data;
 
-        if (operation == 'upsert') {
+        final normalizedOperation = switch (operation) {
+          'upsert' => 'upsert',
+          'create' => 'upsert',
+          'update' => 'upsert',
+          'delete' => 'delete',
+          _ => null,
+        };
+
+        if (normalizedOperation == null) {
+          _lastSyncError = 'ERROR pri sync: neznáma operácia $operation';
+          notifyListeners();
+          continue;
+        }
+
+        if (normalizedOperation == 'upsert') {
           // Always prefer the latest local row over the stored queue payload.
           // This makes sync resilient to old non-JSON payloads and partial updates.
           final db = await LocalDatabase.instance.database;
@@ -129,18 +143,14 @@ class SyncProvider with ChangeNotifier {
 
           // Never send local-only flags to the server schema.
           data.remove('synced');
-        } else if (operation == 'delete') {
+        } else if (normalizedOperation == 'delete') {
           data = null;
-        } else {
-          _lastSyncError = 'ERROR pri sync: neznáma operácia $operation';
-          notifyListeners();
-          continue;
         }
 
         final response = await _dio.post(
           '$_baseUrl/api/sync/$table',
           data: {
-            'operation': operation,
+            'operation': normalizedOperation,
             'id': recordId,
             'data': data,
           },
