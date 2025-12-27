@@ -8,6 +8,7 @@ const materialsRoutes = require('./routes/materials');
 const recipesRoutes = require('./routes/recipes');
 const batchesRoutes = require('./routes/batches');
 const productsRoutes = require('./routes/products');
+const syncRoutes = require('./routes/sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,6 +28,7 @@ app.use('/api/materials', materialsRoutes);
 app.use('/api/recipes', recipesRoutes);
 app.use('/api/batches', batchesRoutes);
 app.use('/api/products', productsRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Run migrations on startup
 runMigrations()
@@ -42,6 +44,8 @@ runMigrations()
   });
 
 module.exports = app;
+
+
 
 
 

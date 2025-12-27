@@ -3,9 +3,17 @@ import 'package:sqflite/sqflite.dart' hide Batch;
 import '../database/local_database.dart';
 import '../models/models.dart';
 import '../services/receipt_number_service.dart';
+import '../services/sync_queue_service.dart';
 
 class DatabaseProvider with ChangeNotifier {
   final LocalDatabase _db = LocalDatabase.instance;
+  final SyncQueueService _syncQueue = SyncQueueService();
+  
+  Map<String, dynamic> _withSynced0(Map<String, dynamic> map) {
+    final m = Map<String, dynamic>.from(map);
+    m['synced'] = 0;
+    return m;
+  }
   
   // Expose database for advanced queries
   Future<Database> getDatabase() async {
@@ -52,17 +60,25 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertMaterial(Material material) async {
     final db = await _db.database;
-    return await db.insert('materials', material.toMap());
+    final data = _withSynced0(material.toMap());
+    final id = await db.insert('materials', data);
+    await _syncQueue.enqueueUpsert(table: 'materials', recordId: id, data: data);
+    return id;
   }
 
   Future<int> updateMaterial(Material material) async {
     final db = await _db.database;
-    return await db.update(
+    final data = _withSynced0(material.toMap());
+    final result = await db.update(
       'materials',
-      material.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [material.id],
     );
+    if (material.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'materials', recordId: material.id!, data: data);
+    }
+    return result;
   }
 
   Future<void> deleteMaterial(int id) async {
@@ -72,6 +88,7 @@ class DatabaseProvider with ChangeNotifier {
       where: 'id = ?',
       whereArgs: [id],
     );
+    await _syncQueue.enqueueDelete(table: 'materials', recordId: id);
   }
 
   Future<void> deleteAllData() async {
@@ -95,7 +112,10 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertRecipe(Recipe recipe) async {
     final db = await _db.database;
-    return await db.insert('recipes', recipe.toMap());
+    final data = _withSynced0(recipe.toMap());
+    final id = await db.insert('recipes', data);
+    await _syncQueue.enqueueUpsert(table: 'recipes', recordId: id, data: data);
+    return id;
   }
 
   Future<void> insertRecipeAggregate(
@@ -105,13 +125,15 @@ class DatabaseProvider with ChangeNotifier {
     double amount,
   ) async {
     final db = await _db.database;
-    await db.insert('recipe_aggregates', {
+    final data = {
       'recipe_id': recipeId,
       'material_id': materialId,
       'fraction_id': fractionId,
       'amount': amount,
       'synced': 0,
-    });
+    };
+    final id = await db.insert('recipe_aggregates', data);
+    await _syncQueue.enqueueUpsert(table: 'recipe_aggregates', recordId: id, data: data);
   }
 
   // Batches
@@ -143,17 +165,25 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertBatch(Batch batch) async {
     final db = await _db.database;
-    return await db.insert('batches', batch.toMap());
+    final data = _withSynced0(batch.toMap());
+    final id = await db.insert('batches', data);
+    await _syncQueue.enqueueUpsert(table: 'batches', recordId: id, data: data);
+    return id;
   }
 
   Future<int> updateBatch(Batch batch) async {
     final db = await _db.database;
-    return await db.update(
+    final data = _withSynced0(batch.toMap());
+    final result = await db.update(
       'batches',
-      batch.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [batch.id],
     );
+    if (batch.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'batches', recordId: batch.id!, data: data);
+    }
+    return result;
   }
 
   // Check material stock levels
@@ -251,23 +281,30 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<void> insertBatchMaterial(Map<String, dynamic> batchMaterial) async {
     final db = await _db.database;
-    await db.insert('batch_materials', {
+    final data = {
       'batch_id': batchMaterial['batch_id'],
       'material_id': batchMaterial['material_id'],
       'fraction_id': batchMaterial['fraction_id'],
       'planned_amount': batchMaterial['planned_amount'],
       'actual_amount': batchMaterial['actual_amount'],
       'synced': 0,
-    });
+    };
+    final id = await db.insert('batch_materials', data);
+    await _syncQueue.enqueueUpsert(table: 'batch_materials', recordId: id, data: data);
   }
 
   Future<void> updateBatchMaterial(int id, double actualAmount) async {
     final db = await _db.database;
     await db.update(
       'batch_materials',
-      {'actual_amount': actualAmount},
+      {'actual_amount': actualAmount, 'synced': 0},
       where: 'id = ?',
       whereArgs: [id],
+    );
+    await _syncQueue.enqueueUpsert(
+      table: 'batch_materials',
+      recordId: id,
+      data: {'actual_amount': actualAmount, 'synced': 0},
     );
   }
 
@@ -285,12 +322,16 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertQualityTest(QualityTest test) async {
     final db = await _db.database;
-    return await db.insert('quality_tests', test.toMap());
+    final data = _withSynced0(test.toMap());
+    final id = await db.insert('quality_tests', data);
+    await _syncQueue.enqueueUpsert(table: 'quality_tests', recordId: id, data: data);
+    return id;
   }
 
   Future<void> deleteQualityTest(int id) async {
     final db = await _db.database;
     await db.delete('quality_tests', where: 'id = ?', whereArgs: [id]);
+    await _syncQueue.enqueueDelete(table: 'quality_tests', recordId: id);
   }
 
   // Stock Movements
@@ -389,7 +430,9 @@ class DatabaseProvider with ChangeNotifier {
       movementToInsert = movement.copyWith(receiptNumber: receiptNumber);
     }
     
-    final id = await db.insert('stock_movements', movementToInsert.toMap());
+    final data = _withSynced0(movementToInsert.toMap());
+    final id = await db.insert('stock_movements', data);
+    await _syncQueue.enqueueUpsert(table: 'stock_movements', recordId: id, data: data);
     
     // Update material stock only if movement is approved
     if (movementToInsert.status == 'approved' && movementToInsert.materialId != null) {
@@ -430,9 +473,20 @@ class DatabaseProvider with ChangeNotifier {
         'status': 'approved',
         'approved_by': approvedBy,
         'approved_at': DateTime.now().toIso8601String(),
+        'synced': 0,
       },
       where: 'id = ?',
       whereArgs: [movementId],
+    );
+    await _syncQueue.enqueueUpsert(
+      table: 'stock_movements',
+      recordId: movementId,
+      data: {
+        'status': 'approved',
+        'approved_by': approvedBy,
+        'approved_at': DateTime.now().toIso8601String(),
+        'synced': 0,
+      },
     );
     
     // Update material stock
@@ -500,9 +554,21 @@ class DatabaseProvider with ChangeNotifier {
         'approved_by': rejectedBy,
         'approved_at': DateTime.now().toIso8601String(),
         'rejection_reason': reason,
+        'synced': 0,
       },
       where: 'id = ?',
       whereArgs: [movementId],
+    );
+    await _syncQueue.enqueueUpsert(
+      table: 'stock_movements',
+      recordId: movementId,
+      data: {
+        'status': 'rejected',
+        'approved_by': rejectedBy,
+        'approved_at': DateTime.now().toIso8601String(),
+        'rejection_reason': reason,
+        'synced': 0,
+      },
     );
   }
 
@@ -524,9 +590,21 @@ class DatabaseProvider with ChangeNotifier {
         'approved_by': cancelledBy,
         'approved_at': DateTime.now().toIso8601String(),
         'rejection_reason': reason,
+        'synced': 0,
       },
       where: 'id = ?',
       whereArgs: [movementId],
+    );
+    await _syncQueue.enqueueUpsert(
+      table: 'stock_movements',
+      recordId: movementId,
+      data: {
+        'status': 'cancelled',
+        'approved_by': cancelledBy,
+        'approved_at': DateTime.now().toIso8601String(),
+        'rejection_reason': reason,
+        'synced': 0,
+      },
     );
   }
 
@@ -545,12 +623,16 @@ class DatabaseProvider with ChangeNotifier {
     }
     
     // Update the movement in database
+    final data = _withSynced0(updatedMovement.toMap());
     final result = await db.update(
       'stock_movements',
-      updatedMovement.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [updatedMovement.id],
     );
+    if (updatedMovement.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'stock_movements', recordId: updatedMovement.id!, data: data);
+    }
     
     // If updated movement is approved and material is involved, apply the new stock change
     if (updatedMovement.status == 'approved' && updatedMovement.materialId != null) {
@@ -623,17 +705,24 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertInventory(Inventory inventory) async {
     final db = await _db.database;
-    return await db.insert('inventories', inventory.toMap());
+    final data = _withSynced0(inventory.toMap());
+    final id = await db.insert('inventories', data);
+    await _syncQueue.enqueueUpsert(table: 'inventories', recordId: id, data: data);
+    return id;
   }
 
   Future<void> updateInventory(Inventory inventory) async {
     final db = await _db.database;
+    final data = _withSynced0(inventory.toMap());
     await db.update(
       'inventories',
-      inventory.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [inventory.id],
     );
+    if (inventory.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'inventories', recordId: inventory.id!, data: data);
+    }
   }
 
   // Inventory Items
@@ -649,22 +738,30 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertInventoryItem(InventoryItem item) async {
     final db = await _db.database;
-    return await db.insert('inventory_items', item.toMap());
+    final data = _withSynced0(item.toMap());
+    final id = await db.insert('inventory_items', data);
+    await _syncQueue.enqueueUpsert(table: 'inventory_items', recordId: id, data: data);
+    return id;
   }
 
   Future<void> updateInventoryItem(InventoryItem item) async {
     final db = await _db.database;
+    final data = _withSynced0(item.toMap());
     await db.update(
       'inventory_items',
-      item.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [item.id],
     );
+    if (item.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'inventory_items', recordId: item.id!, data: data);
+    }
   }
 
   Future<void> deleteInventoryItem(int id) async {
     final db = await _db.database;
     await db.delete('inventory_items', where: 'id = ?', whereArgs: [id]);
+    await _syncQueue.enqueueDelete(table: 'inventory_items', recordId: id);
   }
 
   // Apply inventory adjustments
@@ -704,22 +801,31 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertSupplier(Supplier supplier) async {
     final db = await _db.database;
-    return await db.insert('suppliers', supplier.toMap());
+    final data = _withSynced0(supplier.toMap());
+    final id = await db.insert('suppliers', data);
+    await _syncQueue.enqueueUpsert(table: 'suppliers', recordId: id, data: data);
+    return id;
   }
 
   Future<int> updateSupplier(Supplier supplier) async {
     final db = await _db.database;
-    return await db.update(
+    final data = _withSynced0(supplier.toMap());
+    final result = await db.update(
       'suppliers',
-      supplier.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [supplier.id],
     );
+    if (supplier.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'suppliers', recordId: supplier.id!, data: data);
+    }
+    return result;
   }
 
   Future<void> deleteSupplier(int id) async {
     final db = await _db.database;
     await db.delete('suppliers', where: 'id = ?', whereArgs: [id]);
+    await _syncQueue.enqueueDelete(table: 'suppliers', recordId: id);
   }
 
   // Warehouses
@@ -751,22 +857,31 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertWarehouse(Warehouse warehouse) async {
     final db = await _db.database;
-    return await db.insert('warehouses', warehouse.toMap());
+    final data = _withSynced0(warehouse.toMap());
+    final id = await db.insert('warehouses', data);
+    await _syncQueue.enqueueUpsert(table: 'warehouses', recordId: id, data: data);
+    return id;
   }
 
   Future<int> updateWarehouse(Warehouse warehouse) async {
     final db = await _db.database;
-    return await db.update(
+    final data = _withSynced0(warehouse.toMap());
+    final result = await db.update(
       'warehouses',
-      warehouse.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [warehouse.id],
     );
+    if (warehouse.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'warehouses', recordId: warehouse.id!, data: data);
+    }
+    return result;
   }
 
   Future<void> deleteWarehouse(int id) async {
     final db = await _db.database;
     await db.delete('warehouses', where: 'id = ?', whereArgs: [id]);
+    await _syncQueue.enqueueDelete(table: 'warehouses', recordId: id);
   }
 
   // Price History
@@ -823,7 +938,9 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertPriceHistory(PriceHistory priceHistory) async {
     final db = await _db.database;
-    final id = await db.insert('price_history', priceHistory.toMap());
+    final data = _withSynced0(priceHistory.toMap());
+    final id = await db.insert('price_history', data);
+    await _syncQueue.enqueueUpsert(table: 'price_history', recordId: id, data: data);
     
     // Don't update material prices here - they will be updated when receipt is approved
     // This ensures prices only change after approval
@@ -900,22 +1017,31 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertCustomer(Customer customer) async {
     final db = await _db.database;
-    return await db.insert('customers', customer.toMap());
+    final data = _withSynced0(customer.toMap());
+    final id = await db.insert('customers', data);
+    await _syncQueue.enqueueUpsert(table: 'customers', recordId: id, data: data);
+    return id;
   }
 
   Future<int> updateCustomer(Customer customer) async {
     final db = await _db.database;
-    return await db.update(
+    final data = _withSynced0(customer.toMap());
+    final result = await db.update(
       'customers',
-      customer.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [customer.id],
     );
+    if (customer.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'customers', recordId: customer.id!, data: data);
+    }
+    return result;
   }
 
   Future<void> deleteCustomer(int id) async {
     final db = await _db.database;
     await db.delete('customers', where: 'id = ?', whereArgs: [id]);
+    await _syncQueue.enqueueDelete(table: 'customers', recordId: id);
   }
 
   // Warehouse Locations
@@ -949,23 +1075,36 @@ class DatabaseProvider with ChangeNotifier {
     final db = await _db.database;
     // If this is set as default, unset other defaults
     if (location.isDefault) {
-      await db.update('warehouse_locations', {'is_default': 0});
+      await db.update('warehouse_locations', {'is_default': 0, 'synced': 0});
     }
-    return await db.insert('warehouse_locations', location.toMap());
+    final data = _withSynced0(location.toMap());
+    final id = await db.insert('warehouse_locations', data);
+    await _syncQueue.enqueueUpsert(table: 'warehouse_locations', recordId: id, data: data);
+    return id;
   }
 
   Future<int> updateWarehouseLocation(WarehouseLocation location) async {
     final db = await _db.database;
     // If this is set as default, unset other defaults
     if (location.isDefault) {
-      await db.update('warehouse_locations', {'is_default': 0}, where: 'id != ?', whereArgs: [location.id]);
+      await db.update(
+        'warehouse_locations',
+        {'is_default': 0, 'synced': 0},
+        where: 'id != ?',
+        whereArgs: [location.id],
+      );
     }
-    return await db.update(
+    final data = _withSynced0(location.toMap());
+    final result = await db.update(
       'warehouse_locations',
-      location.toMap(),
+      data,
       where: 'id = ?',
       whereArgs: [location.id],
     );
+    if (location.id != null) {
+      await _syncQueue.enqueueUpsert(table: 'warehouse_locations', recordId: location.id!, data: data);
+    }
+    return result;
   }
 
   // Unit Conversions
@@ -991,7 +1130,10 @@ class DatabaseProvider with ChangeNotifier {
         whereArgs: [conversion.materialId],
       );
     }
-    return await db.insert('unit_conversions', conversion.toMap());
+    final data = _withSynced0(conversion.toMap());
+    final id = await db.insert('unit_conversions', data);
+    await _syncQueue.enqueueUpsert(table: 'unit_conversions', recordId: id, data: data);
+    return id;
   }
 
   // Product Variants
@@ -1008,7 +1150,10 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertProductVariant(ProductVariant variant) async {
     final db = await _db.database;
-    return await db.insert('product_variants', variant.toMap());
+    final data = _withSynced0(variant.toMap());
+    final id = await db.insert('product_variants', data);
+    await _syncQueue.enqueueUpsert(table: 'product_variants', recordId: id, data: data);
+    return id;
   }
 
   // Product Accessories
@@ -1024,7 +1169,10 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertProductAccessory(ProductAccessory accessory) async {
     final db = await _db.database;
-    return await db.insert('product_accessories', accessory.toMap());
+    final data = _withSynced0(accessory.toMap());
+    final id = await db.insert('product_accessories', data);
+    await _syncQueue.enqueueUpsert(table: 'product_accessories', recordId: id, data: data);
+    return id;
   }
 
   // Purchase Price Lists
@@ -1058,7 +1206,10 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertPurchasePriceList(PurchasePriceList priceList) async {
     final db = await _db.database;
-    return await db.insert('purchase_price_lists', priceList.toMap());
+    final data = _withSynced0(priceList.toMap());
+    final id = await db.insert('purchase_price_lists', data);
+    await _syncQueue.enqueueUpsert(table: 'purchase_price_lists', recordId: id, data: data);
+    return id;
   }
 
   Future<List<PurchasePriceListItem>> getPurchasePriceListItems(int priceListId) async {
@@ -1073,7 +1224,10 @@ class DatabaseProvider with ChangeNotifier {
 
   Future<int> insertPurchasePriceListItem(PurchasePriceListItem item) async {
     final db = await _db.database;
-    return await db.insert('purchase_price_list_items', item.toMap());
+    final data = _withSynced0(item.toMap());
+    final id = await db.insert('purchase_price_list_items', data);
+    await _syncQueue.enqueueUpsert(table: 'purchase_price_list_items', recordId: id, data: data);
+    return id;
   }
 
   // Auto Orders - Generate suggested orders based on min/max stock
@@ -1104,7 +1258,9 @@ class DatabaseProvider with ChangeNotifier {
     // Save to database
     final db = await _db.database;
     for (final order in autoOrders) {
-      await db.insert('auto_orders', order.toMap());
+      final data = _withSynced0(order.toMap());
+      final id = await db.insert('auto_orders', data);
+      await _syncQueue.enqueueUpsert(table: 'auto_orders', recordId: id, data: data);
     }
     
     return autoOrders;
@@ -1133,6 +1289,7 @@ class DatabaseProvider with ChangeNotifier {
     final db = await _db.database;
     final updates = <String, dynamic>{
       'status': status,
+      'synced': 0,
     };
     if (status == 'ordered') {
       updates['ordered_at'] = DateTime.now().toIso8601String();
@@ -1141,6 +1298,7 @@ class DatabaseProvider with ChangeNotifier {
       updates['notes'] = notes;
     }
     await db.update('auto_orders', updates, where: 'id = ?', whereArgs: [id]);
+    await _syncQueue.enqueueUpsert(table: 'auto_orders', recordId: id, data: updates);
   }
 
   // Warehouse Closings
@@ -1156,8 +1314,16 @@ class DatabaseProvider with ChangeNotifier {
   Future<int> insertWarehouseClosing(WarehouseClosing closing) async {
     final db = await _db.database;
     // Close all open closings first
-    await db.update('warehouse_closings', {'status': 'closed'}, where: 'status = ?', whereArgs: ['open']);
-    return await db.insert('warehouse_closings', closing.toMap());
+    await db.update(
+      'warehouse_closings',
+      {'status': 'closed', 'synced': 0},
+      where: 'status = ?',
+      whereArgs: ['open'],
+    );
+    final data = _withSynced0(closing.toMap());
+    final id = await db.insert('warehouse_closings', data);
+    await _syncQueue.enqueueUpsert(table: 'warehouse_closings', recordId: id, data: data);
+    return id;
   }
 
   Future<void> closeWarehouseClosing(int id) async {
@@ -1167,16 +1333,29 @@ class DatabaseProvider with ChangeNotifier {
       {
         'status': 'closed',
         'closed_at': DateTime.now().toIso8601String(),
+        'synced': 0,
       },
       where: 'id = ?',
       whereArgs: [id],
+    );
+    await _syncQueue.enqueueUpsert(
+      table: 'warehouse_closings',
+      recordId: id,
+      data: {
+        'status': 'closed',
+        'closed_at': DateTime.now().toIso8601String(),
+        'synced': 0,
+      },
     );
   }
 
   // Audit Log
   Future<int> insertAuditLog(AuditLog log) async {
     final db = await _db.database;
-    return await db.insert('audit_logs', log.toMap());
+    final data = _withSynced0(log.toMap());
+    final id = await db.insert('audit_logs', data);
+    await _syncQueue.enqueueUpsert(table: 'audit_logs', recordId: id, data: data);
+    return id;
   }
 
   Future<List<AuditLog>> getAuditLogs({

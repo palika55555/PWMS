@@ -20,19 +20,7 @@ class LocalDatabase {
   }
 
   Future<Database> _initDB(String filePath) async {
-    String dbPath;
-    
-    // Get database path based on platform
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      // For desktop platforms, use application support directory
-      final appDir = await getApplicationSupportDirectory();
-      dbPath = appDir.path;
-    } else {
-      // For mobile platforms, use the standard databases path
-      dbPath = await getDatabasesPath();
-    }
-    
-    final path = join(dbPath, filePath);
+    final path = join(await getDatabaseDirectoryPath(), filePath);
 
     return await openDatabase(
       path,
@@ -42,21 +30,36 @@ class LocalDatabase {
     );
   }
 
-  Future<void> deleteDatabase() async {
+  /// Returns the directory where the SQLite file is stored (platform-aware).
+  Future<String> getDatabaseDirectoryPath() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // For desktop platforms, use application support directory
+      final appDir = await getApplicationSupportDirectory();
+      return appDir.path;
+    }
+    // For mobile platforms, use the standard databases path
+    return await getDatabasesPath();
+  }
+
+  /// Returns the full absolute path to the DB file (`problock.db`).
+  Future<String> getDatabaseFilePath() async {
+    final dir = await getDatabaseDirectoryPath();
+    return join(dir, 'problock.db');
+  }
+
+  /// Closes the DB connection and clears the cached instance.
+  /// Useful for backup/restore on Windows where the DB file can be locked.
+  Future<void> closeDatabase() async {
     if (_database != null) {
       await _database!.close();
       _database = null;
     }
-    
-    String dbPath;
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      final appDir = await getApplicationSupportDirectory();
-      dbPath = appDir.path;
-    } else {
-      dbPath = await getDatabasesPath();
-    }
-    
-    final path = join(dbPath, 'problock.db');
+  }
+
+  Future<void> deleteDatabase() async {
+    await closeDatabase();
+
+    final path = await getDatabaseFilePath();
     await databaseFactory.deleteDatabase(path);
     
     // Reinitialize database
@@ -966,9 +969,6 @@ class LocalDatabase {
     await db.execute('CREATE INDEX idx_stock_movements_material ON stock_movements(material_id)');
     await db.execute('CREATE INDEX idx_inventory_items_inventory ON inventory_items(inventory_id)');
     await db.execute('CREATE INDEX idx_suppliers_name ON suppliers(name)');
-    await db.execute('CREATE INDEX idx_warehouses_name ON warehouses(name)');
-    await db.execute('CREATE INDEX idx_warehouses_code ON warehouses(code)');
-    await db.execute('CREATE INDEX idx_warehouses_active ON warehouses(is_active)');
     await db.execute('CREATE INDEX idx_price_history_material ON price_history(material_id)');
     await db.execute('CREATE INDEX idx_price_history_date ON price_history(price_date)');
     await db.execute('CREATE INDEX idx_materials_plu ON materials(plu_code)');
@@ -1074,6 +1074,11 @@ class LocalDatabase {
         updated_at TEXT NOT NULL
       )
     ''');
+
+    // Warehouses indexes (must be created after the table exists)
+    await db.execute('CREATE INDEX idx_warehouses_name ON warehouses(name)');
+    await db.execute('CREATE INDEX idx_warehouses_code ON warehouses(code)');
+    await db.execute('CREATE INDEX idx_warehouses_active ON warehouses(is_active)');
     
     // Warehouse locations
     await db.execute('''

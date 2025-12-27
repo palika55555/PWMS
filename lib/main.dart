@@ -7,6 +7,8 @@ import 'screens/home_screen.dart';
 import 'providers/database_provider.dart';
 import 'providers/sync_provider.dart';
 import 'providers/zoom_provider.dart';
+import 'providers/app_settings_provider.dart';
+import 'providers/auto_backup_provider.dart';
 import 'database/local_database.dart';
 import 'database/database_stub.dart'
     if (dart.library.io) 'database/database_ffi.dart'
@@ -47,9 +49,14 @@ class ProBlockApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DatabaseProvider()),
         ChangeNotifierProvider(create: (_) => SyncProvider()),
         ChangeNotifierProvider(create: (_) => ZoomProvider()),
+        ChangeNotifierProvider(create: (_) => AppSettingsProvider()),
+        ChangeNotifierProxyProvider<AppSettingsProvider, AutoBackupProvider>(
+          create: (_) => AutoBackupProvider(),
+          update: (_, settings, provider) => provider!..updateSettings(settings),
+        ),
       ],
-      child: Consumer<ZoomProvider>(
-        builder: (context, zoomProvider, child) {
+      child: Consumer2<ZoomProvider, AppSettingsProvider>(
+        builder: (context, zoomProvider, settings, child) {
           return Shortcuts(
             shortcuts: {
               // Ctrl + + (na hlavnej klávesnici je to Shift + =, alebo numerická klávesnica +)
@@ -93,12 +100,28 @@ class ProBlockApp extends StatelessWidget {
                 autofocus: true,
                 child: MaterialApp(
                   title: 'ProBlock PWMS',
+                  themeMode: settings.themeMode,
                   theme: ThemeData(
+                    useMaterial3: true,
+                    fontFamily: 'OpenSans',
                     colorScheme: ColorScheme.fromSeed(
-                      seedColor: Colors.blue,
+                      seedColor: settings.seedColor,
                       brightness: Brightness.light,
                     ),
+                    cardTheme: CardThemeData(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  darkTheme: ThemeData(
                     useMaterial3: true,
+                    fontFamily: 'OpenSans',
+                    colorScheme: ColorScheme.fromSeed(
+                      seedColor: settings.seedColor,
+                      brightness: Brightness.dark,
+                    ),
                     cardTheme: CardThemeData(
                       elevation: 2,
                       shape: RoundedRectangleBorder(

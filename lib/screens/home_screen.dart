@@ -9,6 +9,7 @@ import 'production/production_screen.dart';
 import 'warehouse/warehouse_screen.dart';
 import 'warehouse/material_search_screen.dart';
 import 'qr_code/qr_code_screen.dart';
+import 'settings/settings_screen.dart';
 
 class _DeleteDatabaseIntent extends Intent {
   const _DeleteDatabaseIntent();
@@ -230,6 +231,21 @@ class _HomeScreenState extends State<HomeScreen> {
                             context,
                             MaterialPageRoute(
                               builder: (context) => const MaterialSearchScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _buildMenuCard(
+                        context,
+                        title: 'Nastavenia',
+                        icon: Icons.settings,
+                        color: Colors.blueGrey,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SettingsScreen(),
                             ),
                           );
                         },

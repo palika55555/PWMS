@@ -1,0 +1,163 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AppSettingsProvider extends ChangeNotifier {
+  static const _kThemeMode = 'settings.themeMode'; // system|light|dark
+  static const _kSeedColor = 'settings.seedColor'; // int
+  static const _kSyncUploadEnabled = 'settings.sync.uploadEnabled';
+  static const _kSyncDownloadEnabled = 'settings.sync.downloadEnabled';
+  static const _kBackupDir = 'settings.backup.dir';
+  static const _kAutoBackupEnabled = 'settings.backup.autoEnabled';
+  static const _kAutoBackupIntervalMinutes = 'settings.backup.autoIntervalMinutes';
+  static const _kLastAutoBackupAt = 'settings.backup.lastAutoBackupAt';
+
+  ThemeMode _themeMode = ThemeMode.light;
+  Color _seedColor = Colors.blue;
+
+  bool _syncUploadEnabled = true;
+  bool _syncDownloadEnabled = false;
+
+  String? _backupDir;
+  bool _autoBackupEnabled = false;
+  int _autoBackupIntervalMinutes = 24 * 60; // daily
+  DateTime? _lastAutoBackupAt;
+
+  bool _adminUnlocked = false; // session-only
+
+  ThemeMode get themeMode => _themeMode;
+  Color get seedColor => _seedColor;
+  bool get syncUploadEnabled => _syncUploadEnabled;
+  bool get syncDownloadEnabled => _syncDownloadEnabled;
+  String? get backupDir => _backupDir;
+  bool get autoBackupEnabled => _autoBackupEnabled;
+  int get autoBackupIntervalMinutes => _autoBackupIntervalMinutes;
+  DateTime? get lastAutoBackupAt => _lastAutoBackupAt;
+  bool get adminUnlocked => _adminUnlocked;
+
+  AppSettingsProvider() {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final mode = prefs.getString(_kThemeMode) ?? 'light';
+    _themeMode = switch (mode) {
+      'dark' => ThemeMode.dark,
+      'system' => ThemeMode.system,
+      _ => ThemeMode.light,
+    };
+
+    final seed = prefs.getInt(_kSeedColor);
+    if (seed != null) _seedColor = Color(seed);
+
+    _syncUploadEnabled = prefs.getBool(_kSyncUploadEnabled) ?? true;
+    _syncDownloadEnabled = prefs.getBool(_kSyncDownloadEnabled) ?? false;
+    _autoBackupEnabled = prefs.getBool(_kAutoBackupEnabled) ?? false;
+    _autoBackupIntervalMinutes = prefs.getInt(_kAutoBackupIntervalMinutes) ?? (24 * 60);
+    final last = prefs.getString(_kLastAutoBackupAt);
+    _lastAutoBackupAt = last == null ? null : DateTime.tryParse(last);
+
+    _backupDir = prefs.getString(_kBackupDir);
+    _backupDir ??= await _defaultBackupDir();
+
+    notifyListeners();
+  }
+
+  Future<String> _defaultBackupDir() async {
+    // Windows-only requirement, but keep sane fallback for other platforms.
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docs.path}${Platform.pathSeparator}ProBlockPWMS${Platform.pathSeparator}Backups');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir.path;
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    _themeMode = mode;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _kThemeMode,
+      switch (mode) {
+        ThemeMode.dark => 'dark',
+        ThemeMode.system => 'system',
+        _ => 'light',
+      },
+    );
+  }
+
+  Future<void> setSeedColor(Color color) async {
+    _seedColor = color;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kSeedColor, color.value);
+  }
+
+  Future<void> setSyncUploadEnabled(bool v) async {
+    _syncUploadEnabled = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kSyncUploadEnabled, v);
+  }
+
+  Future<void> setSyncDownloadEnabled(bool v) async {
+    _syncDownloadEnabled = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kSyncDownloadEnabled, v);
+  }
+
+  Future<void> setBackupDir(String? dir) async {
+    _backupDir = (dir == null || dir.isEmpty) ? await _defaultBackupDir() : dir;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kBackupDir, _backupDir!);
+  }
+
+  Future<void> setAutoBackupEnabled(bool v) async {
+    _autoBackupEnabled = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAutoBackupEnabled, v);
+  }
+
+  Future<void> setAutoBackupIntervalMinutes(int minutes) async {
+    if (minutes < 15) minutes = 15;
+    _autoBackupIntervalMinutes = minutes;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kAutoBackupIntervalMinutes, minutes);
+  }
+
+  Future<void> setLastAutoBackupAt(DateTime? dt) async {
+    _lastAutoBackupAt = dt;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (dt == null) {
+      await prefs.remove(_kLastAutoBackupAt);
+    } else {
+      await prefs.setString(_kLastAutoBackupAt, dt.toIso8601String());
+    }
+  }
+
+  bool unlockAdmin(String pin) {
+    if (pin == 'admin') {
+      _adminUnlocked = true;
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  void lockAdmin() {
+    _adminUnlocked = false;
+    notifyListeners();
+  }
+}
+
+
