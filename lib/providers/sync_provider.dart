@@ -193,6 +193,10 @@ class SyncProvider with ChangeNotifier {
       // Should match backend allowlist (backend/routes/sync.js -> ALLOWED_TABLES).
       // We'll only upload tables that also exist locally.
       const tables = <String>[
+        'suppliers',
+        'customers',
+        'warehouses',
+        'warehouse_locations',
         'materials',
         'aggregate_fractions',
         'recipes',
@@ -201,19 +205,15 @@ class SyncProvider with ChangeNotifier {
         'batch_materials',
         'quality_tests',
         'products',
-        'stock_movements',
         'inventories',
         'inventory_items',
-        'suppliers',
-        'customers',
-        'warehouses',
-        'warehouse_locations',
+        'stock_movements',
+        'price_history',
         'unit_conversions',
         'product_variants',
         'product_accessories',
         'purchase_price_lists',
         'purchase_price_list_items',
-        'price_history',
         'auto_orders',
         'warehouse_closings',
         'audit_logs',
@@ -248,7 +248,13 @@ class SyncProvider with ChangeNotifier {
             String details = '';
             final body = resp.data;
             if (body is Map && body['error'] != null) {
-              details = ': ${body['error']}';
+              final err = body['error'];
+              final detail = body['detail'];
+              if (detail != null && detail.toString().isNotEmpty) {
+                details = ': $err • $detail';
+              } else {
+                details = ': $err';
+              }
             }
             _lastSyncError = 'ERROR (HTTP ${resp.statusCode}) pri full upload $table#$id$details';
             notifyListeners();

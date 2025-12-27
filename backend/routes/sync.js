@@ -108,7 +108,16 @@ router.post('/:table', async (req, res) => {
     return res.status(200).json(result.rows[0]);
   } catch (error) {
     console.error('Sync error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    // Return helpful diagnostics so the client can show the real reason (FK violation, missing column, etc.)
+    // This service is typically used in a trusted environment; adjust if you need stricter security.
+    return res.status(500).json({
+      error: 'Internal server error',
+      detail: error?.message,
+      code: error?.code,
+      constraint: error?.constraint,
+      table: error?.table,
+      column: error?.column,
+    });
   }
 });
 
@@ -124,7 +133,14 @@ router.get('/:table', async (req, res) => {
     return res.json(result.rows);
   } catch (error) {
     console.error('Sync snapshot error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({
+      error: 'Internal server error',
+      detail: error?.message,
+      code: error?.code,
+      constraint: error?.constraint,
+      table: error?.table,
+      column: error?.column,
+    });
   }
 });
 

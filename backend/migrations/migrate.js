@@ -22,6 +22,26 @@ async function getColumnType(client, tableName, columnName) {
   return result.rows[0]?.data_type;
 }
 
+async function getExistingColumns(client, tableName) {
+  const result = await client.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1`,
+    [tableName]
+  );
+  return new Set(result.rows.map((r) => r.column_name));
+}
+
+async function ensureMissingColumns(client, tableName, columns) {
+  // columns: Array<{ name: string, sql: string }>
+  const existing = await getExistingColumns(client, tableName);
+  for (const col of columns) {
+    if (existing.has(col.name)) continue;
+    console.warn(`[migrate] Adding missing column ${tableName}.${col.name}`);
+    await client.query(`ALTER TABLE ${tableName} ADD COLUMN ${col.sql}`);
+  }
+}
+
 async function dropAllTables(client) {
   // Drop in child->parent order (CASCADE for safety)
   await client.query('DROP TABLE IF EXISTS audit_logs CASCADE');
@@ -111,9 +131,20 @@ async function runMigrations() {
           id SERIAL PRIMARY KEY,
           name VARCHAR(255) NOT NULL,
           type VARCHAR(50) NOT NULL,
+          category TEXT DEFAULT 'warehouse',
           unit VARCHAR(20) NOT NULL,
           current_stock DECIMAL(10, 2) DEFAULT 0,
           min_stock DECIMAL(10, 2) DEFAULT 0,
+          plu_code TEXT,
+          ean_code TEXT,
+          average_purchase_price_without_vat NUMERIC,
+          average_purchase_price_with_vat NUMERIC,
+          sale_price NUMERIC,
+          vat_rate NUMERIC DEFAULT 20.0,
+          has_recycling_fee BOOLEAN DEFAULT FALSE,
+          recycling_fee NUMERIC,
+          default_supplier_id INTEGER,
+          warehouse_number TEXT,
           synced BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -125,6 +156,19 @@ async function runMigrations() {
       // Repair legacy schemas where materials.id is not integer.
       await ensureMaterialsIdIsInteger(client);
     }
+    await ensureMissingColumns(client, 'materials', [
+      { name: 'category', sql: "category TEXT DEFAULT 'warehouse'" },
+      { name: 'plu_code', sql: 'plu_code TEXT' },
+      { name: 'ean_code', sql: 'ean_code TEXT' },
+      { name: 'average_purchase_price_without_vat', sql: 'average_purchase_price_without_vat NUMERIC' },
+      { name: 'average_purchase_price_with_vat', sql: 'average_purchase_price_with_vat NUMERIC' },
+      { name: 'sale_price', sql: 'sale_price NUMERIC' },
+      { name: 'vat_rate', sql: 'vat_rate NUMERIC DEFAULT 20.0' },
+      { name: 'has_recycling_fee', sql: 'has_recycling_fee BOOLEAN DEFAULT FALSE' },
+      { name: 'recycling_fee', sql: 'recycling_fee NUMERIC' },
+      { name: 'default_supplier_id', sql: 'default_supplier_id INTEGER' },
+      { name: 'warehouse_number', sql: 'warehouse_number TEXT' },
+    ]);
 
     // Aggregate fractions table
     const fractionsExists = await checkTableExists(client, 'aggregate_fractions');
@@ -157,6 +201,8 @@ async function runMigrations() {
           water_amount DECIMAL(10, 2) NOT NULL,
           plasticizer_amount DECIMAL(10, 2),
           wc_ratio DECIMAL(5, 2),
+          mixer_capacity NUMERIC,
+          products_per_mixer INTEGER,
           synced BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -166,6 +212,10 @@ async function runMigrations() {
     } else {
       console.log('Recipes table already exists');
     }
+    await ensureMissingColumns(client, 'recipes', [
+      { name: 'mixer_capacity', sql: 'mixer_capacity NUMERIC' },
+      { name: 'products_per_mixer', sql: 'products_per_mixer INTEGER' },
+    ]);
 
     // Recipe aggregates table
     const recipeAggregatesExists = await checkTableExists(client, 'recipe_aggregates');
@@ -199,6 +249,11 @@ async function runMigrations() {
           quality_approved_by VARCHAR(255),
           quality_approved_at TIMESTAMP,
           notes TEXT,
+          drying_days INTEGER,
+          curing_start_date TEXT,
+          curing_end_date TEXT,
+          production_temperature NUMERIC,
+          production_humidity NUMERIC,
           synced BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -208,6 +263,13 @@ async function runMigrations() {
     } else {
       console.log('Batches table already exists');
     }
+    await ensureMissingColumns(client, 'batches', [
+      { name: 'drying_days', sql: 'drying_days INTEGER' },
+      { name: 'curing_start_date', sql: 'curing_start_date TEXT' },
+      { name: 'curing_end_date', sql: 'curing_end_date TEXT' },
+      { name: 'production_temperature', sql: 'production_temperature NUMERIC' },
+      { name: 'production_humidity', sql: 'production_humidity NUMERIC' },
+    ]);
 
     // Batch materials table
     const batchMaterialsExists = await checkTableExists(client, 'batch_materials');
@@ -259,8 +321,12 @@ async function runMigrations() {
           batch_id INTEGER REFERENCES batches(id) ON DELETE CASCADE,
           product_code VARCHAR(100) UNIQUE,
           qr_code VARCHAR(255) UNIQUE,
+          serial_number TEXT,
+          production_number TEXT,
+          expiration_date TEXT,
           status VARCHAR(50) DEFAULT 'produced',
           location VARCHAR(255),
+          warehouse_location_id INTEGER,
           synced BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -269,6 +335,12 @@ async function runMigrations() {
     } else {
       console.log('Products table already exists');
     }
+    await ensureMissingColumns(client, 'products', [
+      { name: 'serial_number', sql: 'serial_number TEXT' },
+      { name: 'production_number', sql: 'production_number TEXT' },
+      { name: 'expiration_date', sql: 'expiration_date TEXT' },
+      { name: 'warehouse_location_id', sql: 'warehouse_location_id INTEGER' },
+    ]);
 
     // Suppliers table
     const suppliersExists = await checkTableExists(client, 'suppliers');
