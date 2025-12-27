@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:dio/dio.dart';
 
 import '../../providers/app_settings_provider.dart';
 import '../../providers/auto_backup_provider.dart';
@@ -43,6 +44,15 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.sync,
             child: Column(
               children: [
+                ListTile(
+                  leading: const Icon(Icons.link),
+                  title: const Text('Backend URL'),
+                  subtitle: Text(settings.apiBaseUrl),
+                  trailing: OutlinedButton(
+                    onPressed: () => _showBackendUrlDialog(context),
+                    child: const Text('Zmeniť'),
+                  ),
+                ),
                 SwitchListTile(
                   value: settings.syncUploadEnabled,
                   onChanged: (v) => settings.setSyncUploadEnabled(v),
@@ -411,6 +421,94 @@ class SettingsScreen extends StatelessWidget {
         _snack(context, 'Admin režim odomknutý');
       }
     }
+  }
+
+  static Future<void> _showBackendUrlDialog(BuildContext context) async {
+    final settings = context.read<AppSettingsProvider>();
+    final controller = TextEditingController(text: settings.apiBaseUrl);
+    String? testResult;
+    bool busy = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) {
+          Future<void> test() async {
+            final url = controller.text.trim().replaceAll(RegExp(r'/+$'), '');
+            if (url.isEmpty) {
+              setState(() => testResult = 'Zadaj URL');
+              return;
+            }
+
+            setState(() {
+              busy = true;
+              testResult = null;
+            });
+
+            try {
+              final dio = Dio(
+                BaseOptions(
+                  connectTimeout: const Duration(seconds: 5),
+                  receiveTimeout: const Duration(seconds: 5),
+                ),
+              );
+              final resp = await dio.get('$url/health');
+              setState(() => testResult = 'OK: ${resp.statusCode}');
+            } catch (e) {
+              setState(() => testResult = 'Chyba: $e');
+            } finally {
+              setState(() => busy = false);
+            }
+          }
+
+          Future<void> save() async {
+            final url = controller.text.trim().replaceAll(RegExp(r'/+$'), '');
+            if (url.isEmpty) return;
+            await settings.setApiBaseUrl(url);
+            if (ctx.mounted) Navigator.pop(ctx);
+            _snack(context, 'Backend URL uložené');
+          }
+
+          return AlertDialog(
+            title: const Text('Backend URL'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: 'URL',
+                    hintText: 'https://pwms-production.up.railway.app',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (testResult != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(testResult!),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy ? null : () => Navigator.pop(ctx),
+                child: const Text('Zrušiť'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : test,
+                icon: const Icon(Icons.health_and_safety),
+                label: Text(busy ? 'Testujem…' : 'Test /health'),
+              ),
+              FilledButton(
+                onPressed: busy ? null : save,
+                child: const Text('Uložiť'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 
