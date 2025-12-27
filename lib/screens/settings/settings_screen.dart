@@ -450,12 +450,17 @@ class SettingsScreen extends StatelessWidget {
                 BaseOptions(
                   connectTimeout: const Duration(seconds: 5),
                   receiveTimeout: const Duration(seconds: 5),
+                  validateStatus: (_) => true,
                 ),
               );
               final resp = await dio.get('$url/health');
-              setState(() => testResult = 'OK: ${resp.statusCode}');
+              if (resp.statusCode == 200) {
+                setState(() => testResult = 'OK');
+              } else {
+                setState(() => testResult = 'ERROR (HTTP ${resp.statusCode})');
+              }
             } catch (e) {
-              setState(() => testResult = 'Chyba: $e');
+              setState(() => testResult = 'ERROR');
             } finally {
               setState(() => busy = false);
             }

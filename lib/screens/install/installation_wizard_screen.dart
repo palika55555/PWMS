@@ -94,11 +94,21 @@ class _InstallationWizardScreenState extends State<InstallationWizardScreen> {
       _apiTestResult = null;
     });
     try {
-      final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 5)));
-      final resp = await dio.get('$url/health');
-      setState(() => _apiTestResult = 'OK: ${resp.statusCode}');
+      final dio2 = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+          validateStatus: (_) => true,
+        ),
+      );
+      final resp = await dio2.get('$url/health');
+      if (resp.statusCode == 200) {
+        setState(() => _apiTestResult = 'OK');
+      } else {
+        setState(() => _apiTestResult = 'ERROR (HTTP ${resp.statusCode})');
+      }
     } catch (e) {
-      setState(() => _apiTestResult = 'Chyba: $e');
+      setState(() => _apiTestResult = 'ERROR');
     } finally {
       setState(() => _busy = false);
     }

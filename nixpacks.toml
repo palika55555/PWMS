@@ -9,6 +9,6 @@ cmds = ["if [ -d backend ]; then cd backend; fi; npm install"]
 cmds = ["if [ -d backend ]; then cd backend; fi; npm run migrate || true"]
 
 [start]
-cmd = "if [ -d backend ]; then cd backend; fi; npm start"
+cmd = "if [ -d backend ]; then cd backend; fi; npm run migrate && npm start"
 
 
