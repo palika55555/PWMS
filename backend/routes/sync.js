@@ -31,6 +31,8 @@ const ALLOWED_TABLES = new Set([
   'warehouse_closings',
   'audit_logs',
   'pallet_movements',
+  'product_pallets',
+  'product_pallet_events',
 ]);
 
 async function getTableColumns(table) {

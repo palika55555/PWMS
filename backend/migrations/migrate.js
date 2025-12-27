@@ -342,6 +342,72 @@ async function runMigrations() {
       { name: 'warehouse_location_id', sql: 'warehouse_location_id INTEGER' },
     ]);
 
+    // Product pallets (inventory of pallets for produced products)
+    const productPalletsExists = await checkTableExists(client, 'product_pallets');
+    if (!productPalletsExists) {
+      await client.query(`
+        CREATE TABLE product_pallets (
+          id SERIAL PRIMARY KEY,
+          pallet_id TEXT UNIQUE NOT NULL,
+          product_code TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'in_stock', -- in_stock | issued
+          first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_raw TEXT,
+          source TEXT,
+          synced BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await client.query(`CREATE INDEX idx_product_pallets_product_code ON product_pallets(product_code)`);
+      await client.query(`CREATE INDEX idx_product_pallets_status ON product_pallets(status)`);
+      await client.query(`CREATE INDEX idx_product_pallets_last_seen ON product_pallets(last_seen_at)`);
+      console.log('Created product_pallets table');
+    } else {
+      console.log('Product_pallets table already exists');
+    }
+    await ensureMissingColumns(client, 'product_pallets', [
+      { name: 'pallet_id', sql: 'pallet_id TEXT UNIQUE NOT NULL' },
+      { name: 'product_code', sql: 'product_code TEXT NOT NULL' },
+      { name: 'status', sql: "status TEXT NOT NULL DEFAULT 'in_stock'" },
+      { name: 'first_seen_at', sql: 'first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'last_seen_at', sql: 'last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'last_raw', sql: 'last_raw TEXT' },
+      { name: 'source', sql: 'source TEXT' },
+      { name: 'synced', sql: 'synced BOOLEAN DEFAULT TRUE' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', sql: 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
+
+    const productPalletEventsExists = await checkTableExists(client, 'product_pallet_events');
+    if (!productPalletEventsExists) {
+      await client.query(`
+        CREATE TABLE product_pallet_events (
+          id SERIAL PRIMARY KEY,
+          pallet_id TEXT NOT NULL,
+          product_code TEXT,
+          mode TEXT NOT NULL, -- receive | issue
+          raw TEXT,
+          source TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await client.query(`CREATE INDEX idx_product_pallet_events_pallet ON product_pallet_events(pallet_id)`);
+      await client.query(`CREATE INDEX idx_product_pallet_events_created_at ON product_pallet_events(created_at)`);
+      console.log('Created product_pallet_events table');
+    } else {
+      console.log('Product_pallet_events table already exists');
+    }
+    await ensureMissingColumns(client, 'product_pallet_events', [
+      { name: 'pallet_id', sql: 'pallet_id TEXT NOT NULL' },
+      { name: 'product_code', sql: 'product_code TEXT' },
+      { name: 'mode', sql: 'mode TEXT NOT NULL' },
+      { name: 'raw', sql: 'raw TEXT' },
+      { name: 'source', sql: 'source TEXT' },
+      { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+    ]);
+
     // Suppliers table
     const suppliersExists = await checkTableExists(client, 'suppliers');
     if (!suppliersExists) {

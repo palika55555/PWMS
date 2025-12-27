@@ -12,6 +12,7 @@ import {
   type ScanMode
 } from "../lib/inventory";
 import { parseQr } from "../lib/qr";
+import { apiEvents, apiListPallets, apiScan, apiSummary, isApiConfigured } from "../lib/api";
 import { QrScanner } from "./QrScanner";
 
 function downloadJson(filename: string, data: unknown) {
@@ -41,12 +42,18 @@ export function AppClient() {
   const [message, setMessage] = useState<string>("");
   const [filter, setFilter] = useState<{ q: string; status: "in_stock" | "issued" | "all" }>({ q: "", status: "in_stock" });
   const manualRef = useRef<HTMLInputElement | null>(null);
+  const [backendEnabled, setBackendEnabled] = useState<boolean>(false);
+  const [backendStatus, setBackendStatus] = useState<"not_configured" | "connecting" | "connected" | "error">("not_configured");
 
   useEffect(() => {
     const s = loadState();
     setState(s);
     const savedProduct = window.localStorage.getItem("pwms_qr_last_product") ?? "";
     setProductCode(savedProduct);
+
+    const configured = isApiConfigured();
+    setBackendEnabled(configured);
+    setBackendStatus(configured ? "connecting" : "not_configured");
   }, []);
 
   useEffect(() => {
@@ -70,6 +77,51 @@ export function AppClient() {
 
   const byProduct = useMemo(() => countsByProduct(state), [state]);
 
+  // If backend is enabled, refresh from server (source of truth)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!backendEnabled) return;
+      try {
+        setBackendStatus("connecting");
+        const [items, evs] = await Promise.all([apiListPallets({ limit: 2000 }), apiEvents(200)]);
+        if (cancelled) return;
+        // Convert backend -> local state shape (so UI stays the same)
+        const next: InventoryStateV1 = {
+          version: 1,
+          items: Object.fromEntries(
+            items.map((it) => [
+              it.palletId,
+              {
+                palletId: it.palletId,
+                productCode: it.productCode,
+                status: it.status,
+                firstSeenAt: it.firstSeenAt,
+                lastSeenAt: it.lastSeenAt,
+                lastRaw: it.lastRaw ?? ""
+              }
+            ])
+          ),
+          events: evs.map((e) => ({
+            id: String(e.id),
+            ts: e.createdAt,
+            mode: e.mode,
+            raw: e.raw ?? "",
+            palletId: e.palletId,
+            productCode: e.productCode ?? ""
+          }))
+        };
+        setState(next);
+        setBackendStatus("connected");
+      } catch (e) {
+        if (!cancelled) setBackendStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendEnabled]);
+
   const filteredItems = useMemo(() => {
     const q = filter.q.trim().toLowerCase();
     const status = filter.status;
@@ -91,13 +143,13 @@ export function AppClient() {
     const parsed = parseQr(raw);
     setLast({ raw, parsed: `${parsed.kind}` });
 
-    const res = applyScan(state, { mode, qrRaw: raw, fallbackProductCode: productCode });
-    if (!res.ok) {
-      if (res.reason === "MISSING_PRODUCT") {
+    const localRes = applyScan(state, { mode, qrRaw: raw, fallbackProductCode: productCode });
+    if (!localRes.ok) {
+      if (localRes.reason === "MISSING_PRODUCT") {
         setMessage("QR neobsahuje produkt. Vyplň 'Produkt (napr. DT20)' a skús znovu.");
         return;
       }
-      if (res.reason === "MISSING_PALLET") {
+      if (localRes.reason === "MISSING_PALLET") {
         setMessage("QR nemá identifikátor palety (palletId). Skontroluj formát QR kódu.");
         return;
       }
@@ -105,12 +157,65 @@ export function AppClient() {
       return;
     }
 
-    setState(res.state);
-    setMessage(
-      mode === "receive"
-        ? `Príjem OK: ${res.item.productCode} / ${res.item.palletId}`
-        : `Výdaj OK: ${res.item.productCode} / ${res.item.palletId}`
-    );
+    // Optimistic local update (works even offline); if backend is enabled, also persist server-side
+    setState(localRes.state);
+
+    (async () => {
+      if (!backendEnabled) {
+        setMessage(
+          mode === "receive"
+            ? `Príjem OK (lokálne): ${localRes.item.productCode} / ${localRes.item.palletId}`
+            : `Výdaj OK (lokálne): ${localRes.item.productCode} / ${localRes.item.palletId}`
+        );
+        return;
+      }
+      try {
+        await apiScan({
+          mode: mode === "receive" ? "receive" : "issue",
+          palletId: localRes.item.palletId,
+          productCode: localRes.item.productCode,
+          raw: localRes.event.raw
+        });
+        // refresh quick (keeps other devices in sync when you reload)
+        const [items, evs] = await Promise.all([apiListPallets({ limit: 2000 }), apiEvents(200)]);
+        const next: InventoryStateV1 = {
+          version: 1,
+          items: Object.fromEntries(
+            items.map((it) => [
+              it.palletId,
+              {
+                palletId: it.palletId,
+                productCode: it.productCode,
+                status: it.status,
+                firstSeenAt: it.firstSeenAt,
+                lastSeenAt: it.lastSeenAt,
+                lastRaw: it.lastRaw ?? ""
+              }
+            ])
+          ),
+          events: evs.map((e) => ({
+            id: String(e.id),
+            ts: e.createdAt,
+            mode: e.mode,
+            raw: e.raw ?? "",
+            palletId: e.palletId,
+            productCode: e.productCode ?? ""
+          }))
+        };
+        setState(next);
+        setBackendStatus("connected");
+        setMessage(
+          mode === "receive"
+            ? `Príjem OK (backend): ${localRes.item.productCode} / ${localRes.item.palletId}`
+            : `Výdaj OK (backend): ${localRes.item.productCode} / ${localRes.item.palletId}`
+        );
+      } catch {
+        setBackendStatus("error");
+        setMessage(
+          `Lokálne OK, ale backend sa nepodarilo uložiť. Skontroluj API URL a či backend beží (CORS/HTTPS).`
+        );
+      }
+    })();
   }
 
   async function onImportFile(file: File) {
@@ -162,6 +267,28 @@ export function AppClient() {
                 Výdaj (odčítaj)
               </button>
             </div>
+            <span className="badge">
+              <strong>Backend</strong>{" "}
+              <span className="muted">
+                {backendStatus === "not_configured"
+                  ? "nenastavený"
+                  : backendStatus === "connecting"
+                    ? "pripájam…"
+                    : backendStatus === "connected"
+                      ? "OK"
+                      : "chyba"}
+              </span>
+            </span>
+            <label className="badge" style={{ cursor: isApiConfigured() ? "pointer" : "not-allowed", opacity: isApiConfigured() ? 1 : 0.6 }}>
+              <input
+                type="checkbox"
+                checked={backendEnabled}
+                disabled={!isApiConfigured()}
+                onChange={(e) => setBackendEnabled(e.target.checked)}
+                style={{ width: 16, height: 16 }}
+              />
+              Použiť backend
+            </label>
           </div>
 
           <div className="controls">
@@ -415,7 +542,7 @@ export function AppClient() {
 
       <p className="small muted" style={{ marginTop: 18 }}>
         Poznámka: Kamera funguje len cez HTTPS (Vercel je OK). Ak chceš ukladať dáta centrálne (pre viacerých ľudí/telefónov),
-        doplníme API a synchronizáciu na tvoj backend.
+        nastav `NEXT_PUBLIC_API_BASE_URL` na URL tvojho backendu a zapni „Použiť backend“.
       </p>
     </div>
   );

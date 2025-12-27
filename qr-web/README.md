@@ -64,4 +64,12 @@ Najjednoduchšie:
 
 Kamera funguje len cez **HTTPS** (Vercel je OK).
 
+## Napojenie na backend (centrálne dáta)
+
+Ak chceš, aby sa stav paliet zdieľal medzi viacerými zariadeniami, nastav na Verceli env premennú:
+
+- `NEXT_PUBLIC_API_BASE_URL` = URL tvojho backendu (napr. `https://pwms-production.up.railway.app`)
+
+Potom v appke zapni prepínač **„Použiť backend“**.
+
 

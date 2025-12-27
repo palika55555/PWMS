@@ -39,6 +39,13 @@ Backend API pre Production and Warehouse Management System.
 - `GET /api/products/qr/:qrCode` - Získať produkt podľa QR kódu
 - `POST /api/products` - Vytvoriť nový produkt
 
+### Pallets (produktové palety – web QR)
+
+- `POST /api/pallets/scan` - Uložiť sken palety (upsert stav: `in_stock|issued`) + uložiť event
+- `GET /api/pallets` - Zoznam paliet (query: `?status=in_stock|issued&q=...&limit=...`)
+- `GET /api/pallets/summary` - Prehľad počtov podľa produktu
+- `GET /api/pallets/events` - Posledné eventy (query: `?limit=...`)
+
 ## Migrácie
 
 Migrácie sa spúšťajú automaticky pri spustení servera. Systém kontroluje existenciu tabuliek a vytvára len tie, ktoré ešte neexistujú.
