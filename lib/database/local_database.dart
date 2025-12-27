@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Conditional imports for different platforms
 import 'database_stub.dart'
@@ -10,17 +11,18 @@ import 'database_stub.dart'
 class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._init();
   static Database? _database;
+  static const _kDatabaseFilePath = 'settings.db.filePath';
 
   LocalDatabase._init();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('problock.db');
+    _database = await _initDB();
     return _database!;
   }
 
-  Future<Database> _initDB(String filePath) async {
-    final path = join(await getDatabaseDirectoryPath(), filePath);
+  Future<Database> _initDB() async {
+    final path = await getDatabaseFilePath();
 
     return await openDatabase(
       path,
@@ -43,6 +45,11 @@ class LocalDatabase {
 
   /// Returns the full absolute path to the DB file (`problock.db`).
   Future<String> getDatabaseFilePath() async {
+    final prefs = await SharedPreferences.getInstance();
+    final configured = prefs.getString(_kDatabaseFilePath);
+    if (configured != null && configured.trim().isNotEmpty) {
+      return configured.trim();
+    }
     final dir = await getDatabaseDirectoryPath();
     return join(dir, 'problock.db');
   }
@@ -63,7 +70,7 @@ class LocalDatabase {
     await databaseFactory.deleteDatabase(path);
     
     // Reinitialize database
-    _database = await _initDB('problock.db');
+    _database = await _initDB();
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {

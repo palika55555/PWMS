@@ -54,6 +54,20 @@ npm run migrate
 - `PORT` - Port pre server (default: 3000)
 - `NODE_ENV` - Environment (development/production)
 
+## Railway deploy (Postgres + Backend)
+
+1. V Railway vytvor nový projekt a pridaj **PostgreSQL** plugin.
+2. V službe backend nastav **Root Directory** na repo root (nechaj tak) – deploy používa `railway.toml` + `nixpacks.toml` a spúšťa `cd backend && npm start`.
+3. Environment variables:
+   - **DATABASE_URL**: Railway ho zvyčajne nastaví automaticky z Postgres pluginu (necommituj ho do kódu).  
+     Pozn.: interný host `postgres.railway.internal` funguje iba v rámci Railway siete.
+   - **NODE_ENV**: `production`
+4. Deploy: build fáza spustí `npm run migrate || true` (best-effort).
+5. Po deploy backend beží na tvojej doméne (napr. `pwms-production.up.railway.app`). Skontroluj `GET /health`.
+
+### Flutter app (Windows)
+V appke v inštalačnom sprievodcovi nastav Server URL na `https://pwms-production.up.railway.app` (bez koncového lomítka).
+
 
 
 

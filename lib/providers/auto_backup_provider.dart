@@ -40,6 +40,12 @@ class AutoBackupProvider extends ChangeNotifier {
     final s = _settings;
     if (s == null) return;
 
+    // Don't do any background work until the initial installation is completed.
+    if (!s.installCompleted) {
+      _stop();
+      return;
+    }
+
     final enabled = s.autoBackupEnabled;
     if (!enabled) {
       _stop();

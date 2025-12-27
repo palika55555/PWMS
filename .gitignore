@@ -47,5 +47,19 @@ app.*.map.json
 # Backend
 backend/node_modules/
 backend/.env
+backend/.env.*
+backend/.envrc
 backend/*.log
 backend/dist/
+
+# Root env (never commit secrets)
+.env
+.env.*
+.envrc
+
+# Local DB backups / sqlite files (safety)
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.backup

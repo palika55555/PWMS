@@ -4,9 +4,9 @@ import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
-import '../config/api_config.dart';
 import '../services/sync_queue_service.dart';
 import '../database/local_database.dart';
+import 'app_settings_provider.dart';
 
 class SyncProvider with ChangeNotifier {
   final Dio _dio = Dio();
@@ -14,12 +14,23 @@ class SyncProvider with ChangeNotifier {
   StreamSubscription<ConnectivityResult>? _connectivitySub;
   bool _isSyncing = false;
   String? _lastSyncError;
+  String _baseUrl = 'http://localhost:3000';
 
   bool get isSyncing => _isSyncing;
   String? get lastSyncError => _lastSyncError;
 
-  SyncProvider() {
-    _startAutoSyncOnConnectivity();
+  SyncProvider();
+
+  void updateSettings(AppSettingsProvider settings) {
+    _baseUrl = settings.apiBaseUrl.trim().isEmpty ? _baseUrl : settings.apiBaseUrl.trim();
+
+    // Only start background activity after installation is complete.
+    if (settings.installCompleted) {
+      _startAutoSyncOnConnectivity();
+    } else {
+      _connectivitySub?.cancel();
+      _connectivitySub = null;
+    }
   }
 
   void _startAutoSyncOnConnectivity() {
@@ -85,7 +96,7 @@ class SyncProvider with ChangeNotifier {
         }
 
         final response = await _dio.post(
-          '${ApiConfig.baseUrl}/api/sync/$table',
+          '$_baseUrl/api/sync/$table',
           data: {
             'operation': operation,
             'id': recordId,
@@ -134,7 +145,7 @@ class SyncProvider with ChangeNotifier {
 
       final snapshot = <String, List<Map<String, dynamic>>>{};
       for (final t in tables) {
-        final resp = await _dio.get('${ApiConfig.baseUrl}/api/sync/$t');
+        final resp = await _dio.get('$_baseUrl/api/sync/$t');
         final list = (resp.data as List).cast<dynamic>();
         snapshot[t] = list.map((e) => (e as Map).cast<String, dynamic>()).toList();
       }

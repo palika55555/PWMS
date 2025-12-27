@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'screens/home_screen.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'screens/bootstrap_screen.dart';
 import 'providers/database_provider.dart';
 import 'providers/sync_provider.dart';
 import 'providers/zoom_provider.dart';
 import 'providers/app_settings_provider.dart';
 import 'providers/auto_backup_provider.dart';
-import 'database/local_database.dart';
 import 'database/database_stub.dart'
     if (dart.library.io) 'database/database_ffi.dart'
     if (dart.library.html) 'database/database_stub.dart';
@@ -33,9 +33,6 @@ void main() async {
     initDatabase();
   }
   
-  // Initialize local database
-  await LocalDatabase.instance.database;
-  
   runApp(const ProBlockApp());
 }
 
@@ -46,10 +43,14 @@ class ProBlockApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => DatabaseProvider()),
-        ChangeNotifierProvider(create: (_) => SyncProvider()),
-        ChangeNotifierProvider(create: (_) => ZoomProvider()),
+        // Settings must be available before any ProxyProvider that depends on it.
         ChangeNotifierProvider(create: (_) => AppSettingsProvider()),
+        ChangeNotifierProvider(create: (_) => DatabaseProvider()),
+        ChangeNotifierProxyProvider<AppSettingsProvider, SyncProvider>(
+          create: (_) => SyncProvider(),
+          update: (_, settings, provider) => provider!..updateSettings(settings),
+        ),
+        ChangeNotifierProvider(create: (_) => ZoomProvider()),
         ChangeNotifierProxyProvider<AppSettingsProvider, AutoBackupProvider>(
           create: (_) => AutoBackupProvider(),
           update: (_, settings, provider) => provider!..updateSettings(settings),
@@ -101,6 +102,17 @@ class ProBlockApp extends StatelessWidget {
                 child: MaterialApp(
                   title: 'ProBlock PWMS',
                   themeMode: settings.themeMode,
+                  locale: settings.locale,
+                  supportedLocales: const [
+                    Locale('sk'),
+                    Locale('cs'),
+                    Locale('en'),
+                  ],
+                  localizationsDelegates: const [
+                    GlobalMaterialLocalizations.delegate,
+                    GlobalWidgetsLocalizations.delegate,
+                    GlobalCupertinoLocalizations.delegate,
+                  ],
                   theme: ThemeData(
                     useMaterial3: true,
                     fontFamily: 'OpenSans',
@@ -137,7 +149,7 @@ class ProBlockApp extends StatelessWidget {
                       child: child!,
                     );
                   },
-                  home: const HomeScreen(),
+                  home: const BootstrapScreen(),
                   debugShowCheckedModeBanner: false,
                 ),
               ),

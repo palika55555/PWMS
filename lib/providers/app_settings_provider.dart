@@ -5,6 +5,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppSettingsProvider extends ChangeNotifier {
+  static const _kInstallCompleted = 'install.completed';
+  static const _kDatabaseFilePath = 'settings.db.filePath';
+  static const _kApiBaseUrl = 'settings.api.baseUrl';
+  static const _kLocaleCode = 'settings.locale.code';
+
   static const _kThemeMode = 'settings.themeMode'; // system|light|dark
   static const _kSeedColor = 'settings.seedColor'; // int
   static const _kSyncUploadEnabled = 'settings.sync.uploadEnabled';
@@ -13,6 +18,11 @@ class AppSettingsProvider extends ChangeNotifier {
   static const _kAutoBackupEnabled = 'settings.backup.autoEnabled';
   static const _kAutoBackupIntervalMinutes = 'settings.backup.autoIntervalMinutes';
   static const _kLastAutoBackupAt = 'settings.backup.lastAutoBackupAt';
+
+  bool _installCompleted = false;
+  String? _databaseFilePath;
+  String _apiBaseUrl = 'http://localhost:3000';
+  String _localeCode = 'sk';
 
   ThemeMode _themeMode = ThemeMode.light;
   Color _seedColor = Colors.blue;
@@ -26,6 +36,11 @@ class AppSettingsProvider extends ChangeNotifier {
   DateTime? _lastAutoBackupAt;
 
   bool _adminUnlocked = false; // session-only
+
+  bool get installCompleted => _installCompleted;
+  String? get databaseFilePath => _databaseFilePath;
+  String get apiBaseUrl => _apiBaseUrl;
+  Locale get locale => Locale(_localeCode);
 
   ThemeMode get themeMode => _themeMode;
   Color get seedColor => _seedColor;
@@ -43,6 +58,11 @@ class AppSettingsProvider extends ChangeNotifier {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+
+    _installCompleted = prefs.getBool(_kInstallCompleted) ?? false;
+    _databaseFilePath = prefs.getString(_kDatabaseFilePath);
+    _apiBaseUrl = prefs.getString(_kApiBaseUrl) ?? _apiBaseUrl;
+    _localeCode = prefs.getString(_kLocaleCode) ?? _localeCode;
 
     final mode = prefs.getString(_kThemeMode) ?? 'light';
     _themeMode = switch (mode) {
@@ -65,6 +85,34 @@ class AppSettingsProvider extends ChangeNotifier {
     _backupDir ??= await _defaultBackupDir();
 
     notifyListeners();
+  }
+
+  Future<void> setInstallCompleted(bool v) async {
+    _installCompleted = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kInstallCompleted, v);
+  }
+
+  Future<void> setDatabaseFilePath(String path) async {
+    _databaseFilePath = path;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kDatabaseFilePath, path);
+  }
+
+  Future<void> setApiBaseUrl(String url) async {
+    _apiBaseUrl = url;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kApiBaseUrl, url);
+  }
+
+  Future<void> setLocaleCode(String code) async {
+    _localeCode = code;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLocaleCode, code);
   }
 
   Future<String> _defaultBackupDir() async {
