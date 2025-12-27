@@ -12,7 +12,7 @@ import {
   type ScanMode
 } from "../lib/inventory";
 import { parseQr } from "../lib/qr";
-import { apiEvents, apiListPallets, apiScan, apiSummary, isApiConfigured } from "../lib/api";
+import { apiEvents, apiListPallets, apiScan, isApiConfigured } from "../lib/api";
 import { QrScanner } from "./QrScanner";
 
 function downloadJson(filename: string, data: unknown) {
@@ -66,13 +66,21 @@ export function AppClient() {
   }, [productCode]);
 
   const totals = useMemo(() => {
-    let inStock = 0;
-    let issued = 0;
+    let inStockPallets = 0;
+    let issuedPallets = 0;
+    let inStockQty = 0;
+    let issuedQty = 0;
     for (const it of Object.values(state.items)) {
-      if (it.status === "in_stock") inStock += 1;
-      else issued += 1;
+      const q = (it as any).quantity ?? 1;
+      if (it.status === "in_stock") {
+        inStockPallets += 1;
+        inStockQty += q;
+      } else {
+        issuedPallets += 1;
+        issuedQty += q;
+      }
     }
-    return { pallets: Object.keys(state.items).length, inStock, issued };
+    return { pallets: Object.keys(state.items).length, inStockPallets, issuedPallets, inStockQty, issuedQty };
   }, [state.items]);
 
   const byProduct = useMemo(() => countsByProduct(state), [state]);
@@ -95,6 +103,7 @@ export function AppClient() {
               {
                 palletId: it.palletId,
                 productCode: it.productCode,
+                quantity: (it as any).quantity ?? 1,
                 status: it.status,
                 firstSeenAt: it.firstSeenAt,
                 lastSeenAt: it.lastSeenAt,
@@ -174,7 +183,8 @@ export function AppClient() {
           mode: mode === "receive" ? "receive" : "issue",
           palletId: localRes.item.palletId,
           productCode: localRes.item.productCode,
-          raw: localRes.event.raw
+          raw: localRes.event.raw,
+          quantity: (localRes.item as any).quantity ?? 1
         });
         // refresh quick (keeps other devices in sync when you reload)
         const [items, evs] = await Promise.all([apiListPallets({ limit: 2000 }), apiEvents(200)]);
@@ -186,6 +196,7 @@ export function AppClient() {
               {
                 palletId: it.palletId,
                 productCode: it.productCode,
+                quantity: (it as any).quantity ?? 1,
                 status: it.status,
                 firstSeenAt: it.firstSeenAt,
                 lastSeenAt: it.lastSeenAt,
@@ -246,10 +257,16 @@ export function AppClient() {
           </div>
           <div className="controls">
             <span className="badge">
-              <strong>{totals.inStock}</strong> na sklade
+              <strong>{totals.inStockPallets}</strong> paliet na sklade
             </span>
             <span className="badge">
-              <strong>{totals.issued}</strong> vydané
+              <strong>{totals.issuedPallets}</strong> paliet vydané
+            </span>
+            <span className="badge">
+              <strong>{totals.inStockQty}</strong> ks na sklade
+            </span>
+            <span className="badge">
+              <strong>{totals.issuedQty}</strong> ks vydané
             </span>
             <span className="badge">
               <strong>{totals.pallets}</strong> paliet spolu
@@ -402,14 +419,16 @@ export function AppClient() {
               <thead>
                 <tr>
                   <th>Produkt</th>
-                  <th>Na sklade</th>
-                  <th>Vydané</th>
+                  <th>Palety (sklad)</th>
+                  <th>Palety (vyd.)</th>
+                  <th>Ks (sklad)</th>
+                  <th>Ks (vyd.)</th>
                 </tr>
               </thead>
               <tbody>
                 {byProduct.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="muted">
+                    <td colSpan={5} className="muted">
                       Zatiaľ nič naskenované.
                     </td>
                   </tr>
@@ -417,8 +436,10 @@ export function AppClient() {
                   byProduct.map((r) => (
                     <tr key={r.productCode}>
                       <td className="mono">{r.productCode}</td>
-                      <td>{r.inStock}</td>
-                      <td>{r.issued}</td>
+                      <td>{r.inStockPallets}</td>
+                      <td>{r.issuedPallets}</td>
+                      <td>{r.inStockQty}</td>
+                      <td>{r.issuedQty}</td>
                     </tr>
                   ))
                 )}
@@ -459,6 +480,7 @@ export function AppClient() {
                 <tr>
                   <th>Paleta</th>
                   <th>Produkt</th>
+                  <th>Ks</th>
                   <th>Stav</th>
                   <th>Naposledy</th>
                   <th></th>
@@ -467,7 +489,7 @@ export function AppClient() {
               <tbody>
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="muted">
+                    <td colSpan={6} className="muted">
                       Žiadne výsledky.
                     </td>
                   </tr>
@@ -476,6 +498,7 @@ export function AppClient() {
                     <tr key={it.palletId}>
                       <td className="mono">{it.palletId}</td>
                       <td className="mono">{it.productCode}</td>
+                      <td>{(it as any).quantity ?? 1}</td>
                       <td>{it.status === "in_stock" ? "na sklade" : "vydané"}</td>
                       <td className="small">{isoToLocal(it.lastSeenAt)}</td>
                       <td style={{ width: 1, whiteSpace: "nowrap" }}>

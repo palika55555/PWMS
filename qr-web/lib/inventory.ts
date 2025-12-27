@@ -16,6 +16,7 @@ export type InventoryEvent = {
 export type InventoryItem = {
   palletId: string;
   productCode: string;
+  quantity: number; // ks on pallet
   status: InventoryStatus;
   firstSeenAt: string; // ISO
   lastSeenAt: string; // ISO
@@ -102,10 +103,13 @@ export function applyScan(prev: InventoryStateV1, input: ApplyScanInput): ApplyS
   const existing = prev.items[palletId];
 
   const nextStatus: InventoryStatus = input.mode === "receive" ? "in_stock" : "issued";
+  const qty = parsed.kind === "raw" ? 1 : (parsed.quantity ?? 1);
+  const qtySafe = Number.isFinite(qty) && qty > 0 ? qty : 1;
   const item: InventoryItem = existing
     ? {
         ...existing,
         productCode,
+        quantity: qtySafe,
         status: nextStatus,
         lastSeenAt: ts,
         lastRaw: parsedRaw
@@ -113,6 +117,7 @@ export function applyScan(prev: InventoryStateV1, input: ApplyScanInput): ApplyS
     : {
         palletId,
         productCode,
+        quantity: qtySafe,
         status: nextStatus,
         firstSeenAt: ts,
         lastSeenAt: ts,
@@ -150,17 +155,34 @@ export function removePallet(state: InventoryStateV1, palletId: string): Invento
   return { ...state, items: nextItems };
 }
 
-export function countsByProduct(state: InventoryStateV1): Array<{ productCode: string; inStock: number; issued: number }> {
-  const map = new Map<string, { inStock: number; issued: number }>();
+export function countsByProduct(state: InventoryStateV1): Array<{
+  productCode: string;
+  inStockPallets: number;
+  issuedPallets: number;
+  inStockQty: number;
+  issuedQty: number;
+}> {
+  const map = new Map<string, { inStockPallets: number; issuedPallets: number; inStockQty: number; issuedQty: number }>();
   for (const item of Object.values(state.items)) {
     const key = item.productCode || "NEZNÁME";
-    const cur = map.get(key) ?? { inStock: 0, issued: 0 };
-    if (item.status === "in_stock") cur.inStock += 1;
-    else cur.issued += 1;
+    const cur = map.get(key) ?? { inStockPallets: 0, issuedPallets: 0, inStockQty: 0, issuedQty: 0 };
+    if (item.status === "in_stock") {
+      cur.inStockPallets += 1;
+      cur.inStockQty += item.quantity ?? 1;
+    } else {
+      cur.issuedPallets += 1;
+      cur.issuedQty += item.quantity ?? 1;
+    }
     map.set(key, cur);
   }
   return [...map.entries()]
-    .map(([productCode, v]) => ({ productCode, inStock: v.inStock, issued: v.issued }))
+    .map(([productCode, v]) => ({
+      productCode,
+      inStockPallets: v.inStockPallets,
+      issuedPallets: v.issuedPallets,
+      inStockQty: v.inStockQty,
+      issuedQty: v.issuedQty
+    }))
     .sort((a, b) => a.productCode.localeCompare(b.productCode));
 }
 

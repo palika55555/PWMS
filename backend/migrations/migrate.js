@@ -350,6 +350,7 @@ async function runMigrations() {
           id SERIAL PRIMARY KEY,
           pallet_id TEXT UNIQUE NOT NULL,
           product_code TEXT NOT NULL,
+          quantity NUMERIC NOT NULL DEFAULT 1,
           status TEXT NOT NULL DEFAULT 'in_stock', -- in_stock | issued
           first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -370,6 +371,7 @@ async function runMigrations() {
     await ensureMissingColumns(client, 'product_pallets', [
       { name: 'pallet_id', sql: 'pallet_id TEXT UNIQUE NOT NULL' },
       { name: 'product_code', sql: 'product_code TEXT NOT NULL' },
+      { name: 'quantity', sql: 'quantity NUMERIC NOT NULL DEFAULT 1' },
       { name: 'status', sql: "status TEXT NOT NULL DEFAULT 'in_stock'" },
       { name: 'first_seen_at', sql: 'first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
       { name: 'last_seen_at', sql: 'last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
@@ -388,6 +390,7 @@ async function runMigrations() {
           pallet_id TEXT NOT NULL,
           product_code TEXT,
           mode TEXT NOT NULL, -- receive | issue
+          quantity NUMERIC,
           raw TEXT,
           source TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -403,6 +406,7 @@ async function runMigrations() {
       { name: 'pallet_id', sql: 'pallet_id TEXT NOT NULL' },
       { name: 'product_code', sql: 'product_code TEXT' },
       { name: 'mode', sql: 'mode TEXT NOT NULL' },
+      { name: 'quantity', sql: 'quantity NUMERIC' },
       { name: 'raw', sql: 'raw TEXT' },
       { name: 'source', sql: 'source TEXT' },
       { name: 'created_at', sql: 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },

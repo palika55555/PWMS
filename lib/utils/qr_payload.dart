@@ -1,0 +1,57 @@
+import 'dart:convert';
+
+/// QR payloads (JSON) used across Flutter + Web.
+///
+/// Batch QR example:
+/// {
+///   "t":"batch",
+///   "batchNumber":"BATCH-20251227-123456",
+///   "productCode":"DT20",
+///   "qty":1200,
+///   "productionDate":"2025-12-27"
+/// }
+///
+/// Pallet QR example:
+/// {
+///   "t":"pallet",
+///   "palletId":"PAL-000123",
+///   "productCode":"DT20",
+///   "batchNumber":"BATCH-20251227-123456",
+///   "qty":40,
+///   "packedAt":"2025-12-27T21:30:00.000Z"
+/// }
+class QrPayload {
+  static String batch({
+    required String batchNumber,
+    required String productCode,
+    required int qty,
+    required String productionDate, // yyyy-MM-dd
+  }) {
+    return jsonEncode({
+      't': 'batch',
+      'batchNumber': batchNumber,
+      'productCode': productCode,
+      'qty': qty,
+      'productionDate': productionDate,
+    });
+  }
+
+  static String pallet({
+    required String palletId,
+    required String productCode,
+    String? batchNumber,
+    required int qty,
+    String? packedAtIso,
+  }) {
+    return jsonEncode({
+      't': 'pallet',
+      'palletId': palletId,
+      'productCode': productCode,
+      if (batchNumber != null) 'batchNumber': batchNumber,
+      'qty': qty,
+      if (packedAtIso != null) 'packedAt': packedAtIso,
+    });
+  }
+}
+
+

@@ -2,6 +2,7 @@ export type ApiPalletItem = {
   id: number;
   palletId: string;
   productCode: string;
+  quantity: number;
   status: "in_stock" | "issued";
   firstSeenAt: string;
   lastSeenAt: string;
@@ -16,14 +17,30 @@ export type ApiPalletEvent = {
   palletId: string;
   productCode: string | null;
   mode: "receive" | "issue";
+  quantity: number | null;
   raw: string | null;
   source: string | null;
   createdAt: string;
 };
 
 export type ApiSummary = {
-  totals: { in_stock: number; issued: number; total: number };
-  byProduct: Array<{ productCode: string; inStock: number; issued: number; total: number }>;
+  totals: {
+    in_stock_pallets: number;
+    issued_pallets: number;
+    total_pallets: number;
+    in_stock_qty: number;
+    issued_qty: number;
+    total_qty: number;
+  };
+  byProduct: Array<{
+    productCode: string;
+    inStockPallets: number;
+    issuedPallets: number;
+    totalPallets: number;
+    inStockQty: number;
+    issuedQty: number;
+    totalQty: number;
+  }>;
 };
 
 function baseUrl() {
@@ -50,7 +67,13 @@ export function isApiConfigured() {
   return !!baseUrl();
 }
 
-export async function apiScan(input: { mode: "receive" | "issue"; palletId: string; productCode: string; raw: string }) {
+export async function apiScan(input: {
+  mode: "receive" | "issue";
+  palletId: string;
+  productCode: string;
+  raw: string;
+  quantity?: number;
+}) {
   return await request<{ item: ApiPalletItem; event: ApiPalletEvent }>("/api/pallets/scan", {
     method: "POST",
     body: JSON.stringify({ ...input, source: "qr-web" }),

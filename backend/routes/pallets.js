@@ -7,6 +7,7 @@ function mapPalletRow(r) {
     id: r.id,
     palletId: r.pallet_id,
     productCode: r.product_code,
+    quantity: Number(r.quantity ?? 1),
     status: r.status, // in_stock | issued
     firstSeenAt: r.first_seen_at,
     lastSeenAt: r.last_seen_at,
@@ -23,6 +24,7 @@ function mapEventRow(r) {
     palletId: r.pallet_id,
     productCode: r.product_code,
     mode: r.mode, // receive | issue
+    quantity: r.quantity == null ? null : Number(r.quantity),
     raw: r.raw,
     source: r.source,
     createdAt: r.created_at,
@@ -36,9 +38,12 @@ router.get('/summary', async (req, res) => {
       `
       SELECT
         product_code,
-        COUNT(*) FILTER (WHERE status = 'in_stock')::int AS in_stock,
-        COUNT(*) FILTER (WHERE status = 'issued')::int AS issued,
-        COUNT(*)::int AS total
+        COUNT(*) FILTER (WHERE status = 'in_stock')::int AS in_stock_pallets,
+        COUNT(*) FILTER (WHERE status = 'issued')::int AS issued_pallets,
+        COUNT(*)::int AS total_pallets,
+        COALESCE(SUM(quantity) FILTER (WHERE status = 'in_stock'), 0)::numeric AS in_stock_qty,
+        COALESCE(SUM(quantity) FILTER (WHERE status = 'issued'), 0)::numeric AS issued_qty,
+        COALESCE(SUM(quantity), 0)::numeric AS total_qty
       FROM product_pallets
       GROUP BY product_code
       ORDER BY product_code ASC
@@ -48,9 +53,12 @@ router.get('/summary', async (req, res) => {
     const totals = await pool.query(
       `
       SELECT
-        COUNT(*) FILTER (WHERE status = 'in_stock')::int AS in_stock,
-        COUNT(*) FILTER (WHERE status = 'issued')::int AS issued,
-        COUNT(*)::int AS total
+        COUNT(*) FILTER (WHERE status = 'in_stock')::int AS in_stock_pallets,
+        COUNT(*) FILTER (WHERE status = 'issued')::int AS issued_pallets,
+        COUNT(*)::int AS total_pallets,
+        COALESCE(SUM(quantity) FILTER (WHERE status = 'in_stock'), 0)::numeric AS in_stock_qty,
+        COALESCE(SUM(quantity) FILTER (WHERE status = 'issued'), 0)::numeric AS issued_qty,
+        COALESCE(SUM(quantity), 0)::numeric AS total_qty
       FROM product_pallets
       `
     );
@@ -59,9 +67,12 @@ router.get('/summary', async (req, res) => {
       totals: totals.rows[0],
       byProduct: byProduct.rows.map((r) => ({
         productCode: r.product_code,
-        inStock: r.in_stock,
-        issued: r.issued,
-        total: r.total,
+        inStockPallets: r.in_stock_pallets,
+        issuedPallets: r.issued_pallets,
+        totalPallets: r.total_pallets,
+        inStockQty: Number(r.in_stock_qty),
+        issuedQty: Number(r.issued_qty),
+        totalQty: Number(r.total_qty),
       })),
     });
   } catch (error) {
@@ -123,7 +134,7 @@ router.get('/events', async (req, res) => {
 
 // Scan endpoint (upsert pallet state + write event)
 router.post('/scan', async (req, res) => {
-  const { mode, palletId, productCode, raw, source } = req.body || {};
+  const { mode, palletId, productCode, raw, source, quantity } = req.body || {};
   if (!mode || (mode !== 'receive' && mode !== 'issue')) {
     return res.status(400).json({ error: 'Invalid mode (receive|issue)' });
   }
@@ -137,6 +148,8 @@ router.post('/scan', async (req, res) => {
   const status = mode === 'receive' ? 'in_stock' : 'issued';
   const pallet_id = palletId.trim();
   const product_code = productCode.trim();
+  const qty = Number.isFinite(Number(quantity)) ? Number(quantity) : 1;
+  const qtySafe = qty > 0 ? qty : 1;
 
   const client = await pool.connect();
   try {
@@ -144,11 +157,12 @@ router.post('/scan', async (req, res) => {
 
     const upsert = await client.query(
       `
-      INSERT INTO product_pallets (pallet_id, product_code, status, first_seen_at, last_seen_at, last_raw, source, created_at, updated_at)
-      VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO product_pallets (pallet_id, product_code, quantity, status, first_seen_at, last_seen_at, last_raw, source, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT (pallet_id)
       DO UPDATE SET
         product_code = EXCLUDED.product_code,
+        quantity = EXCLUDED.quantity,
         status = EXCLUDED.status,
         last_seen_at = CURRENT_TIMESTAMP,
         last_raw = EXCLUDED.last_raw,
@@ -156,16 +170,16 @@ router.post('/scan', async (req, res) => {
         updated_at = CURRENT_TIMESTAMP
       RETURNING *;
       `,
-      [pallet_id, product_code, status, raw || null, source || 'qr-web']
+      [pallet_id, product_code, qtySafe, status, raw || null, source || 'qr-web']
     );
 
     const ev = await client.query(
       `
-      INSERT INTO product_pallet_events (pallet_id, product_code, mode, raw, source, created_at)
-      VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+      INSERT INTO product_pallet_events (pallet_id, product_code, mode, quantity, raw, source, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
       RETURNING *;
       `,
-      [pallet_id, product_code, mode, raw || null, source || 'qr-web']
+      [pallet_id, product_code, mode, qtySafe, raw || null, source || 'qr-web']
     );
 
     await client.query('COMMIT');
