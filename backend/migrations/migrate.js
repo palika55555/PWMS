@@ -22,6 +22,18 @@ async function getColumnType(client, tableName, columnName) {
   return result.rows[0]?.data_type;
 }
 
+async function dropAllTables(client) {
+  // Drop in child->parent order (CASCADE for safety)
+  await client.query('DROP TABLE IF EXISTS products CASCADE');
+  await client.query('DROP TABLE IF EXISTS quality_tests CASCADE');
+  await client.query('DROP TABLE IF EXISTS batch_materials CASCADE');
+  await client.query('DROP TABLE IF EXISTS batches CASCADE');
+  await client.query('DROP TABLE IF EXISTS recipe_aggregates CASCADE');
+  await client.query('DROP TABLE IF EXISTS recipes CASCADE');
+  await client.query('DROP TABLE IF EXISTS aggregate_fractions CASCADE');
+  await client.query('DROP TABLE IF EXISTS materials CASCADE');
+}
+
 async function ensureMaterialsIdIsInteger(client) {
   const type = await getColumnType(client, 'materials', 'id');
   if (!type) return;
@@ -37,23 +49,9 @@ async function ensureMaterialsIdIsInteger(client) {
     );
 
     if ((nonNumeric.rows[0]?.cnt ?? 0) > 0) {
-      const forceReset = process.env.PWMS_FORCE_RESET_DB === '1';
-      if (forceReset) {
-        console.warn('[migrate] PWMS_FORCE_RESET_DB=1 -> dropping existing tables and recreating schema');
-        await client.query('DROP TABLE IF EXISTS products CASCADE');
-        await client.query('DROP TABLE IF EXISTS quality_tests CASCADE');
-        await client.query('DROP TABLE IF EXISTS batch_materials CASCADE');
-        await client.query('DROP TABLE IF EXISTS batches CASCADE');
-        await client.query('DROP TABLE IF EXISTS recipe_aggregates CASCADE');
-        await client.query('DROP TABLE IF EXISTS recipes CASCADE');
-        await client.query('DROP TABLE IF EXISTS aggregate_fractions CASCADE');
-        await client.query('DROP TABLE IF EXISTS materials CASCADE');
-        return; // caller will recreate tables
-      }
-
       throw new Error(
         `[migrate] materials.id is ${type} but contains non-numeric values; cannot auto-convert to integer. ` +
-          `Either reset the Railway Postgres database or set PWMS_FORCE_RESET_DB=1 to drop tables.`
+          `Reset the Railway Postgres database or set PWMS_FORCE_RESET_DB=1 to drop tables.`
       );
     }
 
@@ -82,6 +80,12 @@ async function runMigrations() {
   
   try {
     await client.query('BEGIN');
+
+    // Optional safety hatch: wipe schema then recreate cleanly.
+    if (process.env.PWMS_FORCE_RESET_DB === '1') {
+      console.warn('[migrate] PWMS_FORCE_RESET_DB=1 -> dropping existing tables (destructive)');
+      await dropAllTables(client);
+    }
 
     // Materials table
     const materialsExists = await checkTableExists(client, 'materials');
