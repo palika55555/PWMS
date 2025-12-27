@@ -1,5 +1,6 @@
 [phases.setup]
-nixPkgs = ["nodejs-18_x", "npm-9_x"]
+# Node already includes npm; specifying npm-* can break on some nixpkgs pins.
+nixPkgs = ["nodejs-18_x"]
 
 [phases.install]
 cmds = ["npm install"]
