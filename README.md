@@ -23,6 +23,11 @@ Aplikácia obsahuje 3 hlavné moduly:
    - Skenovanie QR kódov produktov
    - Generovanie QR kódov
 
+### 🌐 QR Web (Vercel)
+
+V priečinku `qr-web/` je samostatná web appka (Next.js) určená na **skenovanie QR kódov paliet** a **jednoduchú evidenciu paliet na sklade** (Príjem/Výdaj).
+Návod na deploy je v `qr-web/README.md`.
+
 ### 🔄 Offline Režim
 
 Aplikácia funguje aj bez pripojenia na internet pomocou lokálnej SQLite databázy. Po obnovení pripojenia sa údaje automaticky synchronizujú so serverom.
