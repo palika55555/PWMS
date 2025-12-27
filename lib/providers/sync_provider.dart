@@ -171,6 +171,74 @@ class SyncProvider with ChangeNotifier {
     }
   }
 
+  /// PC -> Server full upload.
+  /// Sends all rows from selected local tables to the backend using upsert.
+  /// This is useful for initial seeding or when you want to ensure server has
+  /// everything (not only the queued changes).
+  Future<void> uploadAllLocalToServer() async {
+    if (_isSyncing) return;
+
+    final hasConnection = await checkConnectivity();
+    if (!hasConnection) {
+      _lastSyncError = 'Žiadne pripojenie na internet';
+      notifyListeners();
+      return;
+    }
+
+    _isSyncing = true;
+    _lastSyncError = null;
+    notifyListeners();
+
+    try {
+      // Keep this in sync with backend migrations / safe snapshot list.
+      const tables = <String>[
+        'materials',
+        'aggregate_fractions',
+        'recipes',
+        'recipe_aggregates',
+        'batches',
+        'batch_materials',
+        'quality_tests',
+        'products',
+      ];
+
+      final db = await LocalDatabase.instance.database;
+
+      for (final table in tables) {
+        final rows = await db.query(table);
+        for (final row in rows) {
+          final id = row['id'];
+          if (id is! int) {
+            // If an unexpected schema sneaks in, skip row but keep going.
+            continue;
+          }
+
+          final data = Map<String, dynamic>.from(row);
+          data.remove('synced'); // local-only
+
+          final resp = await _dio.post(
+            '$_baseUrl/api/sync/$table',
+            data: {'operation': 'upsert', 'id': id, 'data': data},
+          );
+
+          if (resp.statusCode == 200 || resp.statusCode == 201) {
+            await _queue.trySetSyncedFlag(table: table, recordId: id, synced: 1);
+          } else {
+            _lastSyncError = 'ERROR (HTTP ${resp.statusCode}) pri full upload $table#$id';
+            notifyListeners();
+            // Stop early so user can fix server/schema issues.
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      _lastSyncError = 'ERROR pri full upload: $e';
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
   /// Server -> PC overwrite-local sync.
   /// This downloads a server snapshot and replaces selected local tables.
   Future<void> downloadOverwriteLocal() async {

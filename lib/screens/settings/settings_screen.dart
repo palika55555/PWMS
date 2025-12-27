@@ -124,6 +124,41 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: sync.isSyncing
+                            ? null
+                            : () async {
+                                if (!settings.syncUploadEnabled) {
+                                  _snack(context, 'Zapni "Upload (PC → server)".');
+                                  return;
+                                }
+                                final ok = await _confirmDestructive(
+                                  context,
+                                  title: 'Odoslať všetko na server?',
+                                  message:
+                                      'Táto akcia odošle všetky lokálne dáta (podporované tabuľky) na server cez UPSERT.\n\nMôže to chvíľu trvať.\n\nPokračovať?',
+                                );
+                                if (ok != true) return;
+
+                                await context.read<SyncProvider>().uploadAllLocalToServer();
+
+                                final err = context.read<SyncProvider>().lastSyncError;
+                                if (err == null) {
+                                  _snack(context, 'Full upload dokončený');
+                                } else {
+                                  _snack(context, 'Chyba sync: $err');
+                                }
+                              },
+                        icon: const Icon(Icons.cloud_upload),
+                        label: const Text('Odoslať všetko (PC → server)'),
+                      ),
+                    ),
+                  ],
+                ),
                 if (sync.lastSyncError != null) ...[
                   const SizedBox(height: 8),
                   Align(
