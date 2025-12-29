@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter/services.dart';
+
 import '../../providers/database_provider.dart';
 import '../../models/models.dart' hide Material;
 import '../../models/material.dart' as material_model;
+import '../../utils/qr_payload.dart';
 import 'batch_materials_screen.dart';
 import 'quality_tests_screen.dart';
 
@@ -120,30 +124,88 @@ class _BatchDetailScreenState extends State<BatchDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Batch info card
+          // Batch info card with QR on right
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Informácie o šarži',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  // Left: info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Informácie o šarži',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const Divider(),
+                        _buildInfoRow('Číslo šarže', _batch!.batchNumber),
+                        _buildInfoRow('Dátum výroby', DateFormat('dd.MM.yyyy').format(DateTime.parse(_batch!.productionDate))),
+                        _buildInfoRow('Množstvo', '${_batch!.quantity} ks'),
+                        _buildInfoRow('Stav', _getStatusText(_batch!.qualityStatus)),
+                        if (_recipe != null) _buildInfoRow('Receptúra', _recipe!.name),
+                        if (_batch!.productionTemperature != null)
+                          _buildInfoRow('Teplota pri výrobe', '${_batch!.productionTemperature!.toStringAsFixed(1)} °C'),
+                        if (_batch!.productionHumidity != null)
+                          _buildInfoRow('Vlhkosť pri výrobe', '${_batch!.productionHumidity!.toStringAsFixed(1)} %'),
+                        if (_batch!.notes != null && _batch!.notes!.isNotEmpty)
+                          _buildInfoRow('Poznámky', _batch!.notes!),
+                      ],
+                    ),
                   ),
-                  const Divider(),
-                  _buildInfoRow('Číslo šarže', _batch!.batchNumber),
-                  _buildInfoRow('Dátum výroby', DateFormat('dd.MM.yyyy').format(DateTime.parse(_batch!.productionDate))),
-                  _buildInfoRow('Množstvo', '${_batch!.quantity} ks'),
-                  _buildInfoRow('Stav', _getStatusText(_batch!.qualityStatus)),
-                  if (_recipe != null)
-                    _buildInfoRow('Receptúra', _recipe!.name),
-                  if (_batch!.productionTemperature != null)
-                    _buildInfoRow('Teplota pri výrobe', '${_batch!.productionTemperature!.toStringAsFixed(1)} °C'),
-                  if (_batch!.productionHumidity != null)
-                    _buildInfoRow('Vlhkosť pri výrobe', '${_batch!.productionHumidity!.toStringAsFixed(1)} %'),
-                  if (_batch!.notes != null && _batch!.notes!.isNotEmpty)
-                    _buildInfoRow('Poznámky', _batch!.notes!),
+
+                  const SizedBox(width: 16),
+
+                  // Right: QR container
+                  SizedBox(
+                    width: 260,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // build payload
+                        Builder(builder: (ctx) {
+                          final productCode = _recipe?.name ?? 'UNKNOWN';
+                          final payload = QrPayload.batch(
+                            batchNumber: _batch!.batchNumber,
+                            productCode: productCode,
+                            qty: _batch!.quantity,
+                            productionDate: _batch!.productionDate,
+                            recipeId: _batch!.recipeId,
+                            dryingDays: _batch!.dryingDays,
+                            curingStartDate: _batch!.curingStartDate,
+                            curingEndDate: _batch!.curingEndDate,
+                            productionTemperature: _batch!.productionTemperature,
+                            productionHumidity: _batch!.productionHumidity,
+                            notes: _batch!.notes,
+                          );
+
+                          return Column(
+                            children: [
+                              SizedBox(
+                                width: 200,
+                                height: 200,
+                                child: QrImageView(
+                                  data: payload,
+                                  version: QrVersions.auto,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  await Clipboard.setData(ClipboardData(text: payload));
+                                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('QR payload skopírovaný')));
+                                },
+                                icon: const Icon(Icons.copy),
+                                label: const Text('Kopírovať payload'),
+                              ),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -616,5 +678,7 @@ class _BatchDetailScreenState extends State<BatchDetailScreen> {
     );
   }
 }
+
+
 
 

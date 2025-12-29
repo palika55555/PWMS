@@ -54,6 +54,27 @@ class SettingsScreen extends StatelessWidget {
                     child: const Text('Zmeniť'),
                   ),
                 ),
+
+                // Connection status tile (online vs local)
+                ListTile(
+                  leading: Icon(
+                    sync.isOnline ? Icons.cloud_done : Icons.cloud_off,
+                    color: sync.isOnline ? Colors.green : Colors.grey,
+                  ),
+                  title: const Text('Pripojenie'),
+                  subtitle: Text(
+                    sync.isOnline ? 'Online' : 'Offline (lokálne) — synchronizácia nie je možná',
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Skontrolovať pripojenie',
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () async {
+                      final ok = await context.read<SyncProvider>().refreshConnectivity();
+                      _snack(context, ok ? 'SIEŤ: Online' : 'SIEŤ: Offline');
+                    },
+                  ),
+                ),
+
                 FutureBuilder<int>(
                   future: _getSyncQueueCount(),
                   builder: (context, snap) {
@@ -612,5 +633,3 @@ class _SectionCard extends StatelessWidget {
     );
   }
 }
-
-

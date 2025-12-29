@@ -411,7 +411,7 @@ export function AppClient() {
                 <p className="title" style={{ margin: 0 }}>
                   Prehľad podľa produktu
                 </p>
-                <p className="sub">Počty paliet „na sklade“ a „vydané“.</p>
+                <p className="sub">Počty paliet aj ks „na sklade“ a „vydané“.</p>
               </div>
             </div>
 

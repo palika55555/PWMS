@@ -21,8 +21,12 @@ class SyncProvider with ChangeNotifier {
   String? _lastSyncError;
   String _baseUrl = 'http://localhost:3000';
 
+  // NEW: online state
+  bool _isOnline = false;
+
   bool get isSyncing => _isSyncing;
   String? get lastSyncError => _lastSyncError;
+  bool get isOnline => _isOnline;
 
   SyncProvider();
 
@@ -31,7 +35,10 @@ class SyncProvider with ChangeNotifier {
 
     // Only start background activity after installation is complete.
     if (settings.installCompleted) {
-      _startAutoSyncOnConnectivity();
+      // ensure we know current connectivity before starting background sync
+      refreshConnectivity().then((_) {
+        _startAutoSyncOnConnectivity();
+      });
     } else {
       _connectivitySub?.cancel();
       _connectivitySub = null;
@@ -42,6 +49,10 @@ class SyncProvider with ChangeNotifier {
     _connectivitySub?.cancel();
     _connectivitySub = Connectivity().onConnectivityChanged.listen((result) async {
       final hasConnection = result != ConnectivityResult.none;
+      // update online state so UI can react immediately
+      _isOnline = hasConnection;
+      notifyListeners();
+
       if (!hasConnection) return;
       // Auto-run sync when internet comes back.
       await syncAll();
@@ -53,18 +64,34 @@ class SyncProvider with ChangeNotifier {
     return connectivityResult != ConnectivityResult.none;
   }
 
+  /// Public: force a connectivity re-check and update internal state
+  Future<bool> refreshConnectivity() async {
+    try {
+      final hasConnection = await checkConnectivity();
+      _isOnline = hasConnection;
+      notifyListeners();
+      return hasConnection;
+    } catch (_) {
+      _isOnline = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<void> syncAll() async {
     if (_isSyncing) return;
 
     final hasConnection = await checkConnectivity();
     if (!hasConnection) {
       _lastSyncError = 'Žiadne pripojenie na internet';
+      _isOnline = false;
       notifyListeners();
       return;
     }
 
     _isSyncing = true;
     _lastSyncError = null;
+    _isOnline = true;
     notifyListeners();
 
     try {

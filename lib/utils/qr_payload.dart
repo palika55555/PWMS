@@ -8,7 +8,14 @@ import 'dart:convert';
 ///   "batchNumber":"BATCH-20251227-123456",
 ///   "productCode":"DT20",
 ///   "qty":1200,
-///   "productionDate":"2025-12-27"
+///   "productionDate":"2025-12-27",
+///   "recipeId": 5,
+///   "dryingDays": 7,
+///   "curingStartDate": "2025-12-27T10:00:00.000Z",
+///   "curingEndDate": "2026-01-03T10:00:00.000Z",
+///   "productionTemperature": 20.5,
+///   "productionHumidity": 55.0,
+///   "notes": "Batch notes"
 /// }
 ///
 /// Pallet QR example:
@@ -26,14 +33,31 @@ class QrPayload {
     required String productCode,
     required int qty,
     required String productionDate, // yyyy-MM-dd
+    int? recipeId,
+    int? dryingDays,
+    String? curingStartDate,
+    String? curingEndDate,
+    double? productionTemperature,
+    double? productionHumidity,
+    String? notes,
   }) {
-    return jsonEncode({
+    final Map<String, dynamic> payload = {
       't': 'batch',
       'batchNumber': batchNumber,
       'productCode': productCode,
       'qty': qty,
       'productionDate': productionDate,
-    });
+    };
+
+    if (recipeId != null) payload['recipeId'] = recipeId;
+    if (dryingDays != null) payload['dryingDays'] = dryingDays;
+    if (curingStartDate != null) payload['curingStartDate'] = curingStartDate;
+    if (curingEndDate != null) payload['curingEndDate'] = curingEndDate;
+    if (productionTemperature != null) payload['productionTemperature'] = productionTemperature;
+    if (productionHumidity != null) payload['productionHumidity'] = productionHumidity;
+    if (notes != null && notes.isNotEmpty) payload['notes'] = notes;
+
+    return jsonEncode(payload);
   }
 
   static String pallet({
@@ -53,5 +77,7 @@ class QrPayload {
     });
   }
 }
+
+
 
 

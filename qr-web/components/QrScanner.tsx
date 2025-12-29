@@ -149,3 +149,5 @@ export function QrScanner({ onDecoded }: QrScannerProps) {
 }
 
 
+
+

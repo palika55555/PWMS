@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter/services.dart';
+
 import '../../providers/database_provider.dart';
 import '../../models/models.dart' hide Material;
 import '../../models/material.dart' as material_model;
+import '../../utils/qr_payload.dart';
 
 class CreateBatchScreen extends StatefulWidget {
   final Recipe? preSelectedRecipe;
@@ -221,20 +225,84 @@ class _CreateBatchScreenState extends State<CreateBatchScreen> {
     );
 
     try {
-      await dbProvider.insertBatch(batch);
+      // Insert once and get id
+      final id = await dbProvider.insertBatch(batch);
+
+      // Build productCode for QR payload. Prefer recipe code/name; fallback to recipe name.
+      final productCode = (_selectedRecipe?.name ?? 'UNKNOWN').toString();
+
+      final qrPayload = QrPayload.batch(
+        batchNumber: batchNumber,
+        productCode: productCode,
+        qty: batch.quantity,
+        productionDate: batch.productionDate,
+        recipeId: batch.recipeId,
+        dryingDays: batch.dryingDays,
+        curingStartDate: batch.curingStartDate,
+        curingEndDate: batch.curingEndDate,
+        productionTemperature: batch.productionTemperature,
+        productionHumidity: batch.productionHumidity,
+        notes: batch.notes,
+      );
+
       if (mounted) {
+        // Show dialog with QR code and actions
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Šarža vytvorená • QR kód'),
+            content: SingleChildScrollView(
+              child: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Constrain QR widget so it has a definite size during layout
+                    SizedBox(
+                      width: 220,
+                      height: 220,
+                      child: QrImageView(
+                        data: qrPayload,
+                        version: QrVersions.auto,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SelectableText(qrPayload, maxLines: 6),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: qrPayload));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: const Text('Kopírovať payload'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Zavrieť'),
+              ),
+            ],
+          ),
+        );
+
         final mediaQuery = MediaQuery.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Šarža bola úspešne vytvorená'),
             behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            bottom: mediaQuery.size.height - mediaQuery.padding.top - 100,
-          ),
+            margin: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: mediaQuery.size.height - mediaQuery.padding.top - 100,
+            ),
           ),
         );
+
         Navigator.pop(context);
       }
     } catch (e) {
@@ -244,11 +312,11 @@ class _CreateBatchScreenState extends State<CreateBatchScreen> {
           SnackBar(
             content: Text('Chyba: $e'),
             behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            bottom: mediaQuery.size.height - mediaQuery.padding.top - 100,
-          ),
+            margin: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: mediaQuery.size.height - mediaQuery.padding.top - 100,
+            ),
           ),
         );
       }
