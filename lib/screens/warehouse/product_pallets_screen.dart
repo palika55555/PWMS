@@ -6,7 +6,12 @@
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../../models/product_pallet.dart';
 import '../../services/pallet_service.dart';
 import '../../screens/qr_code/qr_scanner_wrapper.dart';
@@ -586,15 +591,74 @@ class ProductPalletDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final qrPayload = _buildPalletQrPayload();
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Detail palety ${pallet.palletId}'),
+        actions: [
+          IconButton(
+            tooltip: 'Kopírovať QR payload',
+            icon: const Icon(Icons.copy),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: qrPayload));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('QR payload skopírovaný')),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Tlačiť štítok',
+            icon: const Icon(Icons.print),
+            onPressed: () => _printLabel(context, qrPayload),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'QR kód',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: QrImageView(
+                        data: qrPayload,
+                        version: QrVersions.auto,
+                        size: 220,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        '${pallet.quantity} ks | ${_formatDateOnly(pallet.firstSeenAt)}',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: Text(
+                        '${pallet.palletId} • ${pallet.productCode}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
             // Hlavné informácie
             Card(
               child: Padding(
@@ -712,5 +776,75 @@ class ProductPalletDetailScreen extends StatelessWidget {
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}.${dateTime.month}.${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatDateOnly(DateTime dateTime) {
+    return '${dateTime.day}.${dateTime.month}.${dateTime.year}';
+  }
+
+  String _buildPalletQrPayload() {
+    // Prefer raw QR payload if it already contains pallet JSON (so we preserve batchNumber/packedAt if present)
+    final raw = pallet.lastRaw;
+    if (raw != null && raw.trim().isNotEmpty) {
+      final t = raw.trim();
+      if (t.startsWith('{') && t.endsWith('}')) {
+        try {
+          final decoded = jsonDecode(t);
+          if (decoded is Map<String, dynamic>) {
+            final isPallet = decoded['t'] == 'pallet' || decoded['kind'] == 'pallet';
+            final hasPalletId = decoded['palletId'] != null || decoded['pallet_id'] != null;
+            if (isPallet || hasPalletId) return t;
+          }
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+
+    return QrPayload.pallet(
+      palletId: pallet.palletId,
+      productCode: pallet.productCode,
+      batchNumber: null,
+      qty: pallet.quantity,
+      packedAtIso: pallet.firstSeenAt.toIso8601String(),
+    );
+  }
+
+  Future<void> _printLabel(BuildContext context, String qrPayload) async {
+    final doc = pw.Document();
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a6,
+        build: (pw.Context ctx) {
+          return pw.Center(
+            child: pw.Column(
+              mainAxisSize: pw.MainAxisSize.min,
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.BarcodeWidget(
+                  barcode: pw.Barcode.qrCode(),
+                  data: qrPayload,
+                  width: 180,
+                  height: 180,
+                ),
+                pw.SizedBox(height: 12),
+                pw.Text(
+                  '${pallet.quantity} ks | ${_formatDateOnly(pallet.firstSeenAt)}',
+                  style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text('${pallet.palletId} • ${pallet.productCode}', style: const pw.TextStyle(fontSize: 12)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (_) async => doc.save(),
+      name: 'pallet_${pallet.palletId}.pdf',
+    );
   }
 }
