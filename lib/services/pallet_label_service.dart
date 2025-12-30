@@ -91,7 +91,7 @@ class PalletLabelService {
                     border: pw.Border.all(color: PdfColors.black, width: 1),
                   ),
                   child: pw.Text(
-                    'ŠTÍTKO PALETY',
+                    'ŠTÍTOK PALETY',
                     style: pw.TextStyle(
                       fontSize: 12,
                       fontWeight: pw.FontWeight.bold,
@@ -386,7 +386,7 @@ class PalletLabelService {
     final pdf = await generatePalletLabelPdf(label);
     await Printing.layoutPdf(
       onLayout: (format) async => pdf,
-      name: 'Stitok-palety-${label.palletId}.pdf',
+      name: 'Štítok-palety-${label.palletId}.pdf',
     );
   }
   
@@ -395,7 +395,7 @@ class PalletLabelService {
     final pdf = await generatePalletLabelPdf(label);
     await Printing.sharePdf(
       bytes: pdf,
-      filename: 'Stitok-palety-${label.palletId}.pdf',
+      filename: 'Štítok-palety-${label.palletId}.pdf',
     );
   }
 }

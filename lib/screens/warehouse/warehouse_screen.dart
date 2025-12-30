@@ -10,9 +10,11 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/sync_provider.dart';
-import '../../models/models.dart' show Material, StockMovement;
+import '../../models/material.dart';
+import '../../models/stock_movement.dart';
 import '../../models/warehouse.dart';
 import '../reports/export_service.dart';
+import 'pallet_receive_screen.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../qr_code/qr_code_screen.dart';
 import 'bulk_receipt_screen.dart';
@@ -658,6 +660,18 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                       _loadMaterials();
                     },
                       tooltip: 'Synchronizovať',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.inventory_2, color: Colors.white),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PalletReceiveScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Naskladniť palety',
                   ),
                   IconButton(
                     icon: const Icon(Icons.bar_chart),
