@@ -14,8 +14,17 @@ const palletsRoutes = require('./routes/pallets');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
+// Middleware - CORS with specific origins
+const corsOptions = {
+  origin: [
+    'http://localhost:3000',
+    'https://pwms.vercel.app',
+    // Pridaj ďalšie domény podľa potreby
+  ],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
