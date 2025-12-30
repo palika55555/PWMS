@@ -17,6 +17,7 @@ import '../../services/pallet_service.dart';
 import '../../screens/qr_code/qr_scanner_wrapper.dart';
 import '../../utils/qr_payload.dart';
 import '../../providers/app_settings_provider.dart';
+import '../production/pallet_label_print_screen.dart';
 
 /// Screen pre zobrazenie a správu produktových paliet
 /// Zobrazuje zoznam paliet, umožňuje filtrovanie, skenovanie a detaily
@@ -400,6 +401,18 @@ class _ProductPalletsScreenState extends State<ProductPalletsScreen> {
       appBar: AppBar(
         title: const Text('Palety na sklade'),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PalletLabelPrintScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.local_shipping),
+            tooltip: 'Tlač štítkov palet',
+          ),
           IconButton(
             onPressed: _createPalletManual,
             icon: const Icon(Icons.add_box_outlined),

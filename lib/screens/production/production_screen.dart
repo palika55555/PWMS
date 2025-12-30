@@ -5,8 +5,11 @@ import '../../providers/database_provider.dart';
 import 'batch_list_screen.dart';
 import 'create_batch_screen.dart';
 import 'recipe_list_screen.dart';
+import 'create_recipe_screen.dart';
 import 'production_input_screen.dart';
 import 'pallet_deposits_screen.dart';
+import 'pallet_label_print_screen.dart';
+import 'saved_labels_screen.dart';
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -127,6 +130,42 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       );
                     },
                     tooltip: 'Nová šarža',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.local_shipping, color: Colors.white),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PalletLabelPrintScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Tlač štítkov palet',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.inventory_2, color: Colors.white),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SavedLabelsScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Uložené štítky',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.science, color: Colors.white),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CreateRecipeScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Vytvoriť receptúru',
                   ),
                 ],
               ),

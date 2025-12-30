@@ -8,6 +8,8 @@ import '../../providers/database_provider.dart';
 import '../../models/models.dart' hide Material;
 import '../../models/material.dart' as material_model;
 import '../../utils/qr_payload.dart';
+import 'pallet_label_print_screen.dart';
+import '../../models/recipe.dart';
 
 class CreateBatchScreen extends StatefulWidget {
   final Recipe? preSelectedRecipe;
@@ -246,11 +248,40 @@ class _CreateBatchScreenState extends State<CreateBatchScreen> {
       );
 
       if (mounted) {
+        // Check if this is PB-DT30 product
+        final isPbDt30 = _selectedRecipe?.name.toLowerCase().contains('dt30') == true || 
+                        _selectedRecipe?.name.toLowerCase().contains('pb-dt30') == true ||
+                        _selectedRecipe?.productType.toLowerCase().contains('dt30') == true ||
+                        _selectedRecipe?.productType.toLowerCase().contains('pb-dt30') == true ||
+                        _selectedRecipe?.productType == 'PB-DT30';
+        
         // Show dialog with QR code and actions
         await showDialog<void>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Šarža vytvorená • QR kód'),
+            title: Row(
+              children: [
+                const Text('Šarža vytvorená • QR kód'),
+                if (isPbDt30) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'PB-DT30',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
             content: SingleChildScrollView(
               child: SizedBox(
                 width: 300,
@@ -268,6 +299,36 @@ class _CreateBatchScreenState extends State<CreateBatchScreen> {
                     ),
                     const SizedBox(height: 12),
                     SelectableText(qrPayload, maxLines: 6),
+                    if (isPbDt30) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          border: Border.all(color: Colors.green.shade200),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(Icons.local_shipping, color: Colors.green.shade700, size: 32),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tlač štítkov na palety',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Vytlačte štítky pre palety\n(30 ks, 840 kg na paletu)',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -280,6 +341,27 @@ class _CreateBatchScreenState extends State<CreateBatchScreen> {
                 },
                 child: const Text('Kopírovať payload'),
               ),
+              if (isPbDt30)
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PalletLabelPrintScreen(
+                          batch: batch.copyWith(id: id),
+                          productCode: 'PB-DT30',
+                        ),
+                      ),
+                    );
+                  },
+                  icon: Icon(Icons.print),
+                  label: Text('Tlačiť štítky'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
               FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);

@@ -31,6 +31,7 @@ class _CreateRecipeScreenState extends State<CreateRecipeScreen> {
 
   final List<String> _productTypes = [
     'tvarnice',
+    'PB-DT30',
     'dlazba',
     'obrubniky',
     'iné',
@@ -40,6 +41,66 @@ class _CreateRecipeScreenState extends State<CreateRecipeScreen> {
   void initState() {
     super.initState();
     _loadMaterials();
+    _checkForQuickCreate();
+  }
+
+  /// Skontroluje, či sa má zobraziť rýchle vytvorenie PB-DT30
+  void _checkForQuickCreate() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showQuickCreateDialog();
+    });
+  }
+
+  /// Zobrazí dialóg pre rýchle vytvorenie PB-DT30 receptúry
+  void _showQuickCreateDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Vytvoriť PB-DT30 receptúru?'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Chcete vytvoriť receptúru pre debniace tvarnice PB-DT30?'),
+            SizedBox(height: 8),
+            Text(
+              'Bude automaticky predvyplnené:\n'
+              '• Názov: PB-DT30\n'
+              '• Typ: PB-DT30\n'
+              '• Štandardné hodnoty pre cement a vodu',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Nie, manuálne'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _fillPbDt30Recipe();
+            },
+            child: const Text('Áno, vytvoriť'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Predvyplní hodnoty pre PB-DT30 receptúru
+  void _fillPbDt30Recipe() {
+    setState(() {
+      _nameController.text = 'PB-DT30';
+      _selectedProductType = 'PB-DT30';
+      _descriptionController.text = 'Debniaca tvarnica PB-DT30 - štandardná receptúra';
+      _cementController.text = '250';
+      _waterController.text = '125';
+      _plasticizerController.text = '2.5';
+      _mixerCapacityController.text = '200';
+      _productsPerMixerController.text = '40';
+    });
   }
 
   Future<void> _loadMaterials() async {

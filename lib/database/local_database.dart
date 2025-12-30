@@ -26,7 +26,7 @@ class LocalDatabase {
 
     return await openDatabase(
       path,
-      version: 25, // Add customers.pallet_deposit_price (€/ks)
+      version: 26, // Add pricing_mode to stock_movements
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -318,6 +318,15 @@ class LocalDatabase {
       // Customers: add price per pallet deposit (€/ks)
       try {
         await db.execute('ALTER TABLE customers ADD COLUMN pallet_deposit_price REAL');
+      } catch (e) {
+        print('Migration note: $e');
+      }
+    }
+
+    if (oldVersion < 26) {
+      // Add pricing_mode to stock_movements table
+      try {
+        await db.execute('ALTER TABLE stock_movements ADD COLUMN pricing_mode TEXT');
       } catch (e) {
         print('Migration note: $e');
       }

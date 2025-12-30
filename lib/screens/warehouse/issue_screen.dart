@@ -7,6 +7,7 @@ import '../../models/models.dart' hide Material;
 import '../../models/material.dart' as material_model;
 import '../../services/issue_number_service.dart';
 import 'warehouse_nav_notification.dart';
+import 'pallet_issue_screen.dart';
 
 class IssueScreen extends StatefulWidget {
   /// When provided, IssueScreen opens in "edit" mode and pre-fills the form from these pending issue lines.
@@ -21,6 +22,7 @@ class IssueScreen extends StatefulWidget {
 class _IssueLine {
   material_model.Material? material;
   int? movementId; // existing stock_movements.id (edit mode)
+  bool usePurchasePrice = false;
   final TextEditingController itemTextController = TextEditingController();
   final FocusNode itemFocusNode = FocusNode();
   final TextEditingController quantityController = TextEditingController();
@@ -57,6 +59,8 @@ class _IssueScreenState extends State<IssueScreen> {
   bool _autoIssueNumber = true;
   bool _isEditing = false;
   bool _appliedEditData = false;
+  bool _withoutVat = false;
+  bool _usePurchasePriceGlobally = false;
   List<StockMovement> _originalIssues = const [];
 
   DatabaseProvider? _dbProvider;
@@ -88,7 +92,10 @@ class _IssueScreenState extends State<IssueScreen> {
 
   String _fmtMoney(num? v) => NumberFormat.currency(symbol: '€', decimalDigits: 2).format((v ?? 0).toDouble());
 
-  double _unitPriceWithoutVat(material_model.Material m) => (m.salePrice ?? 0.0);
+  double _unitPriceWithoutVat(material_model.Material m) {
+    // Use sale price, fallback to purchase price if sale price is not set
+    return m.salePrice ?? m.averagePurchasePriceWithoutVat ?? 0.0;
+  }
 
   double? _purchaseUnitWithoutVat(material_model.Material m) => m.averagePurchasePriceWithoutVat;
 
@@ -102,6 +109,56 @@ class _IssueScreenState extends State<IssueScreen> {
     return base * (1 + vat / 100);
   }
 
+  double _effectiveUnitPrice(material_model.Material m, {bool? usePurchasePrice}) {
+    final shouldUsePurchasePrice = usePurchasePrice ?? _usePurchasePriceGlobally;
+    if (shouldUsePurchasePrice) {
+      return _purchaseUnitWithoutVat(m) ?? _unitPriceWithoutVat(m);
+    }
+    if (_withoutVat) {
+      return _unitPriceWithoutVat(m);
+    } else {
+      return _unitPriceWithVat(m);
+    }
+  }
+
+  double _effectiveVatRate(material_model.Material m) {
+    return _withoutVat ? 0.0 : _vatRate(m);
+  }
+
+  String _getPriceDisplayTitle(bool usePurchasePrice) {
+    if (_withoutVat) {
+      return 'Predaj (bez DPH)';
+    }
+    if (usePurchasePrice || _usePurchasePriceGlobally) {
+      return 'Predaj (nákupná cena)';
+    }
+    return 'Predaj (cena výdaja)';
+  }
+
+  String _getSummaryTitle() {
+    if (_withoutVat) {
+      return 'Súhrn (bez DPH)';
+    }
+    if (_usePurchasePriceGlobally) {
+      return 'Súhrn (nákupné ceny)';
+    }
+    bool anyPurchasePrice = _lines.any((l) => l.usePurchasePrice);
+    if (anyPurchasePrice) {
+      return 'Súhrn (zmiešané ceny)';
+    }
+    return 'Súhrn';
+  }
+
+  String _getSalesDisplayTitle() {
+    if (_withoutVat) {
+      return 'Predaj (bez DPH)';
+    }
+    if (_usePurchasePriceGlobally) {
+      return 'Predaj (nákupné ceny)';
+    }
+    return 'Predaj (cena výdaja)';
+  }
+
   void _showSummaryDialog() {
     showDialog(
       context: context,
@@ -110,6 +167,7 @@ class _IssueScreenState extends State<IssueScreen> {
         double buyTotalWith = 0;
         double totalWithout = 0;
         double totalWith = 0;
+        double totalEffective = 0;
 
         for (final l in _lines) {
           final m = l.material;
@@ -119,6 +177,7 @@ class _IssueScreenState extends State<IssueScreen> {
           buyTotalWith += (_purchaseUnitWithVat(m) ?? 0) * qty;
           totalWithout += _unitPriceWithoutVat(m) * qty;
           totalWith += _unitPriceWithVat(m) * qty;
+          totalEffective += _effectiveUnitPrice(m, usePurchasePrice: l.usePurchasePrice) * qty;
         }
 
         final buyVat = buyTotalWith - buyTotalWithout;
@@ -146,7 +205,7 @@ class _IssueScreenState extends State<IssueScreen> {
         }
 
         return AlertDialog(
-          title: const Text('Súhrn'),
+          title: Text(_getSummaryTitle(), style: Theme.of(context).textTheme.titleLarge),
           content: SizedBox(
             width: 520,
             child: Column(
@@ -165,15 +224,19 @@ class _IssueScreenState extends State<IssueScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                Text('Predaj (cena výdaja)', style: Theme.of(context).textTheme.labelLarge),
+                Text(_getSalesDisplayTitle(), style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
                   children: [
                     pill('Bez DPH', _fmtMoney(totalWithout)),
-                    pill('DPH', _fmtMoney(totalVat)),
-                    pill('S DPH', _fmtMoney(totalWith), strong: true),
+                    if (!_withoutVat) ...[
+                      pill('DPH', _fmtMoney(totalVat)),
+                      pill('S DPH', _fmtMoney(totalWith), strong: true),
+                    ] else ...[
+                      pill('Cena spolu', _fmtMoney(totalEffective), strong: true),
+                    ],
                   ],
                 ),
               ],
@@ -194,6 +257,7 @@ class _IssueScreenState extends State<IssueScreen> {
     {'value': 'reklamacia', 'label': 'Reklamácia'},
     {'value': 'interny_presun', 'label': 'Interný presun'},
     {'value': 'likvidacia', 'label': 'Likvidácia'},
+    {'value': 'dobropis', 'label': 'Dobropis'},
     {'value': 'ine', 'label': 'Iné'},
   ];
 
@@ -296,6 +360,7 @@ class _IssueScreenState extends State<IssueScreen> {
               'material_id': l.material?.id,
               'item_text': l.itemTextController.text.trim(),
               'quantity': l.quantityController.text.trim(),
+              'use_purchase_price': l.usePurchasePrice,
             })
         .toList();
 
@@ -312,6 +377,8 @@ class _IssueScreenState extends State<IssueScreen> {
       'location': _locationController.text.trim(),
       'description': _reasonController.text.trim(),
       'notes': _notesController.text.trim(),
+      'without_vat': _withoutVat,
+      'use_purchase_price_globally': _usePurchasePriceGlobally,
       'lines': lines,
     };
 
@@ -416,6 +483,7 @@ class _IssueScreenState extends State<IssueScreen> {
       }
       line.itemTextController.text = (m['item_text'] as String?) ?? '';
       line.quantityController.text = (m['quantity'] as String?) ?? '';
+      line.usePurchasePrice = (m['use_purchase_price'] as bool?) ?? false;
       _lines.add(line);
     }
     if (_lines.isEmpty) _lines.add(_IssueLine());
@@ -433,6 +501,8 @@ class _IssueScreenState extends State<IssueScreen> {
       _locationController.text = (data['location'] as String?) ?? '';
       _reasonController.text = (data['description'] as String?) ?? '';
       _notesController.text = (data['notes'] as String?) ?? '';
+      _withoutVat = (data['without_vat'] as bool?) ?? false;
+      _usePurchasePriceGlobally = (data['use_purchase_price_globally'] as bool?) ?? false;
     });
 
     if (!mounted) return;
@@ -660,8 +730,8 @@ class _IssueScreenState extends State<IssueScreen> {
     }
 
     // Parse & validate lines (extra safety beyond form validators)
-    final parsed = <({material_model.Material material, double quantity, int? movementId})>[];
-    final large = <({material_model.Material material, double quantity, int? movementId})>[];
+    final parsed = <({material_model.Material material, double quantity, int? movementId, bool usePurchasePrice})>[];
+    final large = <({material_model.Material material, double quantity, int? movementId, bool usePurchasePrice})>[];
 
     for (final line in _lines) {
       final material = line.material;
@@ -700,11 +770,11 @@ class _IssueScreenState extends State<IssueScreen> {
         return;
       }
 
-      parsed.add((material: material, quantity: quantity, movementId: line.movementId));
+      parsed.add((material: material, quantity: quantity, movementId: line.movementId, usePurchasePrice: line.usePurchasePrice));
       final available = material.currentStock;
       final isLarge = available > 0 && quantity >= available * 0.8;
       if (isLarge) {
-        large.add((material: material, quantity: quantity, movementId: line.movementId));
+        large.add((material: material, quantity: quantity, movementId: line.movementId, usePurchasePrice: line.usePurchasePrice));
       }
     }
 
@@ -754,7 +824,7 @@ class _IssueScreenState extends State<IssueScreen> {
     }
   }
 
-  Future<void> _confirmIssue(List<({material_model.Material material, double quantity, int? movementId})> lines) async {
+  Future<void> _confirmIssue(List<({material_model.Material material, double quantity, int? movementId, bool usePurchasePrice})> lines) async {
     final dbProvider = Provider.of<DatabaseProvider>(context, listen: false);
     
     final reasonLabel = _selectedReasonLabel();
@@ -787,10 +857,28 @@ class _IssueScreenState extends State<IssueScreen> {
         final usedIds = <int>{};
 
         for (final line in lines) {
-          final unitWithoutVat = _unitPriceWithoutVat(line.material);
-          final vatRate = _vatRate(line.material);
-          final unitWithVat = _unitPriceWithVat(line.material);
-
+          // Determine pricing mode and get correct price
+          String pricingMode = 'sale';
+          double unitWithoutVat;
+          double vatRate;
+          double unitWithVat;
+          
+          if (_withoutVat) {
+            pricingMode = 'vat_exempt';
+            unitWithoutVat = _unitPriceWithoutVat(line.material);
+            vatRate = 0;
+            unitWithVat = unitWithoutVat;
+          } else if (line.usePurchasePrice || _usePurchasePriceGlobally) {
+            pricingMode = 'purchase';
+            unitWithoutVat = _purchaseUnitWithoutVat(line.material) ?? _unitPriceWithoutVat(line.material);
+            vatRate = _vatRate(line.material);
+            unitWithVat = unitWithoutVat * (1 + vatRate / 100);
+          } else {
+            unitWithoutVat = _unitPriceWithoutVat(line.material);
+            vatRate = _vatRate(line.material);
+            unitWithVat = _unitPriceWithVat(line.material);
+          }
+          
           if (line.movementId != null && originalById.containsKey(line.movementId)) {
             usedIds.add(line.movementId!);
             final original = originalById[line.movementId]!;
@@ -809,6 +897,7 @@ class _IssueScreenState extends State<IssueScreen> {
               purchasePriceWithoutVat: unitWithoutVat,
               purchasePriceWithVat: unitWithVat,
               vatRate: vatRate,
+              pricingMode: pricingMode,
               notes: notes,
               movementDate: movementDate,
               status: 'pending',
@@ -836,6 +925,7 @@ class _IssueScreenState extends State<IssueScreen> {
               purchasePriceWithoutVat: unitWithoutVat,
               purchasePriceWithVat: unitWithVat,
               vatRate: vatRate,
+              pricingMode: pricingMode,
               notes: notes,
               movementDate: movementDate,
               createdBy: editor,
@@ -865,9 +955,28 @@ class _IssueScreenState extends State<IssueScreen> {
         }
       } else {
         for (final line in lines) {
-          final unitWithoutVat = _unitPriceWithoutVat(line.material);
-          final vatRate = _vatRate(line.material);
-          final unitWithVat = _unitPriceWithVat(line.material);
+          // Determine pricing mode and get correct price
+          String pricingMode = 'sale';
+          double unitWithoutVat;
+          double vatRate;
+          double unitWithVat;
+          
+          if (_withoutVat) {
+            pricingMode = 'vat_exempt';
+            unitWithoutVat = _unitPriceWithoutVat(line.material);
+            vatRate = 0;
+            unitWithVat = unitWithoutVat;
+          } else if (line.usePurchasePrice || _usePurchasePriceGlobally) {
+            pricingMode = 'purchase';
+            unitWithoutVat = _purchaseUnitWithoutVat(line.material) ?? _unitPriceWithoutVat(line.material);
+            vatRate = _vatRate(line.material);
+            unitWithVat = unitWithoutVat * (1 + vatRate / 100);
+          } else {
+            unitWithoutVat = _unitPriceWithoutVat(line.material);
+            vatRate = _vatRate(line.material);
+            unitWithVat = _unitPriceWithVat(line.material);
+          }
+          
           final movement = StockMovement(
             movementType: 'issue',
             materialId: line.material.id,
@@ -883,6 +992,7 @@ class _IssueScreenState extends State<IssueScreen> {
             purchasePriceWithoutVat: unitWithoutVat,
             purchasePriceWithVat: unitWithVat,
             vatRate: vatRate,
+            pricingMode: pricingMode,
             notes: notes,
             movementDate: movementDate,
             createdBy: 'Current User', // TODO: Get from auth
@@ -971,6 +1081,18 @@ class _IssueScreenState extends State<IssueScreen> {
       appBar: AppBar(
         title: Text(_draftId == null ? 'Nová výdajka' : 'Rozpracovaná výdajka'),
         actions: [
+          IconButton(
+            tooltip: 'Výdaj palet (QR sken)',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PalletIssueScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.qr_code_scanner),
+          ),
           IconButton(
             tooltip: 'Súhrn',
             onPressed: _showSummaryDialog,
@@ -1169,6 +1291,42 @@ class _IssueScreenState extends State<IssueScreen> {
               maxLines: 3,
             );
 
+            final withoutVatField = SwitchListTile.adaptive(
+              value: _withoutVat,
+              onChanged: _saving
+                  ? null
+                  : (v) {
+                      setState(() {
+                        _withoutVat = v;
+                      });
+                    },
+              title: const Text('Vydaj bez DPH'),
+              subtitle: const Text('Pri výpočte ceny nebude zahrnuté DPH'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+            );
+
+            final purchasePriceField = SwitchListTile.adaptive(
+              value: _usePurchasePriceGlobally,
+              onChanged: _saving
+                  ? null
+                  : (v) {
+                      setState(() {
+                        _usePurchasePriceGlobally = v;
+                        if (v) {
+                          // Clear individual settings when using global setting
+                          for (final line in _lines) {
+                            line.usePurchasePrice = false;
+                          }
+                        }
+                      });
+                    },
+              title: const Text('Vydaj za nákupnú cenu'),
+              subtitle: const Text('Použiť nákupnú cenu namiesto predajnej pre všetky položky'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+            );
+
             Widget buildLine(_IssueLine line, int idx) {
               String display(material_model.Material m) => '${m.name} (${m.type})';
 
@@ -1292,10 +1450,12 @@ class _IssueScreenState extends State<IssueScreen> {
                   : Builder(
                       builder: (context) {
                         final unitWithout = _unitPriceWithoutVat(mForPrice);
-                        final vat = _vatRate(mForPrice);
+                        final vat = _effectiveVatRate(mForPrice);
                         final unitWith = _unitPriceWithVat(mForPrice);
+                        final effectiveUnit = _effectiveUnitPrice(mForPrice, usePurchasePrice: line.usePurchasePrice);
                         final totalWithout = unitWithout * qtyParsed;
                         final totalWith = unitWith * qtyParsed;
+                        final totalEffective = effectiveUnit * qtyParsed;
                         final totalVat = totalWith - totalWithout;
 
                         final missingPrice = (mForPrice.salePrice == null);
@@ -1366,19 +1526,34 @@ class _IssueScreenState extends State<IssueScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Predaj (cena výdaja)', style: Theme.of(context).textTheme.labelLarge),
+                                    Text(_getPriceDisplayTitle(line.usePurchasePrice), style: Theme.of(context).textTheme.labelLarge),
+                                    if (_withoutVat) ...[
+                                      const SizedBox(height: 4),
+                                      Text('Výdaj oslobodený od DPH', style: TextStyle(fontSize: 11, color: Colors.orange[700], fontWeight: FontWeight.w500)),
+                                    ] else if (line.usePurchasePrice || _usePurchasePriceGlobally) ...[
+                                      const SizedBox(height: 4),
+                                      Text('Použitá nákupná cena', style: TextStyle(fontSize: 11, color: Colors.blue[700], fontWeight: FontWeight.w500)),
+                                    ],
                                     const SizedBox(height: 8),
                                     Wrap(
                                       spacing: 18,
                                       runSpacing: 10,
                                       children: [
                                         cell('Jedn. bez DPH', _fmtMoney(unitWithout)),
-                                        cell('DPH %', '${vat.toStringAsFixed(0)}%'),
-                                        cell('Jedn. s DPH', _fmtMoney(unitWith)),
+                                        if (!_withoutVat) ...[
+                                          cell('DPH %', '${vat.toStringAsFixed(0)}%'),
+                                          cell('Jedn. s DPH', _fmtMoney(unitWith)),
+                                        ] else ...[
+                                          cell('Jedn. cena', _fmtMoney(effectiveUnit), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                        ],
                                         if (qtyParsed > 0) ...[
                                           cell('Spolu bez DPH', _fmtMoney(totalWithout)),
-                                          cell('DPH spolu', _fmtMoney(totalVat)),
-                                          cell('Spolu s DPH', _fmtMoney(totalWith), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                          if (!_withoutVat) ...[
+                                            cell('DPH spolu', _fmtMoney(totalVat)),
+                                            cell('Spolu s DPH', _fmtMoney(totalWith), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                          ] else ...[
+                                            cell('Spolu cena', _fmtMoney(totalEffective), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                          ],
                                         ],
                                       ],
                                     ),
@@ -1408,6 +1583,23 @@ class _IssueScreenState extends State<IssueScreen> {
                 icon: const Icon(Icons.delete_outline),
               );
 
+              final individualPurchasePriceSwitch = !_usePurchasePriceGlobally && line.material != null
+                  ? SwitchListTile.adaptive(
+                      value: line.usePurchasePrice,
+                      onChanged: _saving
+                          ? null
+                          : (v) {
+                              setState(() {
+                                line.usePurchasePrice = v;
+                              });
+                            },
+                      title: const Text('Nákupná cena'),
+                      subtitle: const Text('Použiť nákupnú cenu namiesto predajnej'),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                    )
+                  : const SizedBox.shrink();
+
               if (!isWide) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1415,6 +1607,7 @@ class _IssueScreenState extends State<IssueScreen> {
                     materialField,
                     _gap,
                     Row(children: [Expanded(child: qtyField), const SizedBox(width: 8), removeBtn]),
+                    individualPurchasePriceSwitch,
                     priceInfo,
                   ],
                 );
@@ -1433,6 +1626,7 @@ class _IssueScreenState extends State<IssueScreen> {
                       removeBtn,
                     ],
                   ),
+                  individualPurchasePriceSwitch,
                   priceInfo,
                 ],
               );
@@ -1496,6 +1690,10 @@ class _IssueScreenState extends State<IssueScreen> {
                       row2(customerField, docField),
                       _gap,
                       row2(recipientField, locationField),
+                      _gap,
+                      withoutVatField,
+                      _gap,
+                      purchasePriceField,
                     ],
                   ),
                 ),

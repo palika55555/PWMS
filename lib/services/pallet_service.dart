@@ -212,6 +212,67 @@ class PalletService {
     }
   }
 
+  /// Vytvorenie novej produktovej palety na sklade
+  /// Používa sa pri generovaní štítkov pre automatické pridanie na sklad
+  /// 
+  /// [palletId] - unikátne ID palety
+  /// [productCode] - kód produktu (napr. "PB-DT30")
+  /// [quantity] - počet kusov na palete
+  /// [batchNumber] - číslo šarže
+  /// [notes] - voliteľné poznámky
+  /// 
+  /// Vráti vytvorený ProductPallet objekt
+  static Future<ProductPallet> createPallet({
+    required String baseUrl,
+    required String palletId,
+    required String productCode,
+    required int quantity,
+    String? batchNumber,
+    String? notes,
+  }) async {
+    try {
+      final dio = _dioFor(baseUrl);
+      final response = await dio.post('/api/pallets', data: {
+        'palletId': palletId,
+        'productCode': productCode,
+        'quantity': quantity,
+        if (batchNumber != null) 'batchNumber': batchNumber,
+        if (notes != null) 'notes': notes,
+        'source': 'flutter-app',
+      });
+
+      return ProductPallet.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Hromadné vytvorenie viacerých palet naraz
+  /// Používa sa pri generovaní štítkov pre viac palet
+  /// 
+  /// [pallets] - zoznam dát pre vytvorenie palet
+  /// 
+  /// Vráti zoznam vytvorených ProductPallet objektov
+  static Future<List<ProductPallet>> createMultiplePallets({
+    required String baseUrl,
+    required List<Map<String, dynamic>> pallets,
+  }) async {
+    try {
+      final dio = _dioFor(baseUrl);
+      final response = await dio.post('/api/pallets/batch', data: {
+        'pallets': pallets,
+        'source': 'flutter-app',
+      });
+
+      final palletsList = response.data['pallets'] as List;
+      return palletsList
+          .map((p) => ProductPallet.fromJson(p as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   /// Testovanie pripojenia k backendu
   /// 
   /// Vráti true ak backend odpovedá

@@ -1,6 +1,12 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart' hide Material;
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/sync_provider.dart';
@@ -45,6 +51,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   List<Material> _materials = [];
   List<Material> _filteredMaterials = [];
   List<Material> _lowStockMaterials = [];
+  Map<int, StockMovement?> _lastPurchaseMovements = {}; // Cache for last purchase movements
   String? _selectedCategoryFilter; // null = všetky, 'warehouse', 'production', 'retail'
   bool _loading = true;
   bool _isCardView = false; // false = table view, true = card view
@@ -80,6 +87,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   bool _showColumnVat = false; // DPH stĺpec
   bool _showColumnMargin = true; // Marža stĺpec - predvolene viditeľný
   bool _showColumnStock = true;
+  bool _showColumnLastPurchasePrice = true; // Posledná nákupná cena - predvolene viditeľný
   
   // Sorting
   String? _sortColumn; // null = no sort, 'name', 'type', 'category', 'plu', 'ean', 'purchase', 'sale', 'margin', 'stock'
@@ -243,9 +251,18 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     final materials = await dbProvider.getMaterials();
     final lowStock = await dbProvider.checkLowStock();
     
+    // Fetch last purchase movements for all materials
+    final Map<int, StockMovement?> lastPurchaseMovements = {};
+    for (final material in materials) {
+      if (material.id != null) {
+        lastPurchaseMovements[material.id!] = await dbProvider.getLastPurchaseMovement(material.id!);
+      }
+    }
+    
     setState(() {
       _materials = materials;
       _lowStockMaterials = lowStock;
+      _lastPurchaseMovements = lastPurchaseMovements;
       _applyFilters();
       _loading = false;
     });
@@ -2220,6 +2237,11 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                         tooltip: _isCardView ? 'Tabuľkové zobrazenie' : 'Kartové zobrazenie',
                       ),
                       IconButton(
+                        icon: const Icon(Icons.print),
+                        onPressed: () => _showPrintDialog(),
+                        tooltip: 'Tlačiť zásoby',
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.download),
                         onPressed: () => _showExportDialog(),
                         tooltip: 'Exportovať do Excelu/CSV',
@@ -2872,6 +2894,16 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     return price.toStringAsFixed(2);
   }
 
+  // Format date string to display format
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.day}.${date.month}.${date.year}';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
   // Format sale price with 2 decimal places
   String _formatSalePrice(double? price) {
     if (price == null) return '-';
@@ -2997,36 +3029,504 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     final RenderBox? overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
     
+    // Build menu items dynamically to reflect current state
+    final List<PopupMenuEntry<dynamic>> items = [
+      const PopupMenuItem<dynamic>(
+        enabled: false,
+        child: Row(
+          children: [
+            Icon(Icons.visibility),
+            SizedBox(width: 8),
+            Text('Zobraziť stĺpce'),
+          ],
+        ),
+      ),
+      const PopupMenuDivider(),
+      _buildColumnMenuItem('ID', _showColumnId, (value) {
+        setState(() => _showColumnId = value);
+      }),
+      _buildColumnMenuItem('Názov', _showColumnName, (value) {
+        setState(() => _showColumnName = value);
+      }),
+      _buildColumnMenuItem('Typ', _showColumnType, (value) {
+        setState(() => _showColumnType = value);
+      }),
+      _buildColumnMenuItem('Kategória', _showColumnCategory, (value) {
+        setState(() => _showColumnCategory = value);
+      }),
+      _buildColumnMenuItem('PLU', _showColumnPLU, (value) {
+        setState(() => _showColumnPLU = value);
+      }),
+      _buildColumnMenuItem('EAN', _showColumnEAN, (value) {
+        setState(() => _showColumnEAN = value);
+      }),
+      _buildColumnMenuItem('Nákup', _showColumnPurchase, (value) {
+        setState(() => _showColumnPurchase = value);
+      }),
+      _buildColumnMenuItem('Predaj', _showColumnSale, (value) {
+        setState(() => _showColumnSale = value);
+      }),
+      _buildColumnMenuItem('DPH', _showColumnVat, (value) {
+        setState(() => _showColumnVat = value);
+      }),
+      _buildColumnMenuItem('Marža', _showColumnMargin, (value) {
+        setState(() => _showColumnMargin = value);
+      }),
+      _buildColumnMenuItem(_showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH', _showColumnLastPurchasePrice, (value) {
+        setState(() => _showColumnLastPurchasePrice = value);
+      }),
+      _buildColumnMenuItem('Stav', _showColumnStock, (value) {
+        setState(() => _showColumnStock = value);
+      }),
+    ];
+    
     showMenu<dynamic>(
       context: context,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(0, 0, overlay.size.width, overlay.size.height),
         Offset.zero & overlay.size,
       ),
-      items: [
-        PopupMenuItem<dynamic>(
-          enabled: false,
-          child: Row(
-            children: [
-              const Icon(Icons.visibility),
-              const SizedBox(width: 8),
-              Text('Zobraziť stĺpce'),
-            ],
-          ),
+      items: items,
+    );
+  }
+  
+  void _showPrintDialog() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _PrintOptionsDialog(materials: _filteredMaterials),
+    );
+    
+    if (result != null) {
+      await _handlePrint(result);
+    }
+  }
+  
+  Future<void> _handlePrint(Map<String, dynamic> printConfig) async {
+    try {
+      // Show preview first
+      await _showPrintPreview(printConfig);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Chyba pri náhľade tlače: $e'),
+          backgroundColor: Colors.red,
         ),
-        const PopupMenuDivider(),
-        _buildColumnMenuItem('ID', _showColumnId, (value) => setState(() => _showColumnId = value)),
-        _buildColumnMenuItem('Názov', _showColumnName, (value) => setState(() => _showColumnName = value)),
-        _buildColumnMenuItem('Typ', _showColumnType, (value) => setState(() => _showColumnType = value)),
-        _buildColumnMenuItem('Kategória', _showColumnCategory, (value) => setState(() => _showColumnCategory = value)),
-        _buildColumnMenuItem('PLU', _showColumnPLU, (value) => setState(() => _showColumnPLU = value)),
-        _buildColumnMenuItem('EAN', _showColumnEAN, (value) => setState(() => _showColumnEAN = value)),
-        _buildColumnMenuItem('Nákup', _showColumnPurchase, (value) => setState(() => _showColumnPurchase = value)),
-        _buildColumnMenuItem('Predaj', _showColumnSale, (value) => setState(() => _showColumnSale = value)),
-        _buildColumnMenuItem('DPH', _showColumnVat, (value) => setState(() => _showColumnVat = value)),
-        _buildColumnMenuItem('Marža', _showColumnMargin, (value) => setState(() => _showColumnMargin = value)),
-        _buildColumnMenuItem('Stav', _showColumnStock, (value) => setState(() => _showColumnStock = value)),
-      ],
+      );
+    }
+  }
+  
+  Future<void> _showPrintPreview(Map<String, dynamic> printConfig) async {
+    // Show loading indicator
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Príprava náhľadu...'),
+          ],
+        ),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    
+    // Generate PDF for preview
+    final pdf = await _generatePDFPreview(printConfig['columns'] as Map<String, dynamic>, printConfig['options'] as Map<String, dynamic>);
+    
+    // Hide loading indicator
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    
+    // Show preview dialog
+    await showDialog(
+      context: context,
+      builder: (context) => _PrintPreviewDialog(
+        pdf: pdf,
+        printConfig: printConfig,
+        totalMaterials: _filteredMaterials.length,
+        onPrint: (columns, options) => _generatePDF(columns, options),
+      ),
+    );
+  }
+  
+  Future<pw.Font?> _loadUnicodeFont() async {
+    try {
+      // Load regular font from assets (primary source)
+      final fontData = await rootBundle.load("assets/fonts/OpenSans-Regular.ttf");
+      return pw.Font.ttf(fontData);
+    } catch (e) {
+      print('⚠ Failed to load font from assets: $e');
+      // Fallback: try to download from CDN
+      try {
+        final response = await http.get(
+          Uri.parse('https://cdn.jsdelivr.net/gh/google/fonts@main/apache/opensans/static/OpenSans-Regular.ttf')
+        ).timeout(const Duration(seconds: 10));
+        
+        if (response.statusCode == 200 && response.bodyBytes.length > 10000) {
+          return pw.Font.ttf(response.bodyBytes.buffer.asByteData());
+        }
+      } catch (e2) {
+        print('⚠ Failed to load font from CDN: $e2');
+      }
+    }
+    return null;
+  }
+  
+  Future<pw.Font?> _loadUnicodeBoldFont() async {
+    try {
+      // Load bold font from assets (primary source)
+      final fontData = await rootBundle.load("assets/fonts/OpenSans-Bold.ttf");
+      return pw.Font.ttf(fontData);
+    } catch (e) {
+      print('⚠ Failed to load bold font from assets: $e');
+      // Fallback: try to download from CDN
+      try {
+        final response = await http.get(
+          Uri.parse('https://cdn.jsdelivr.net/gh/google/fonts@main/apache/opensans/static/OpenSans-Bold.ttf')
+        ).timeout(const Duration(seconds: 10));
+        
+        if (response.statusCode == 200 && response.bodyBytes.length > 10000) {
+          return pw.Font.ttf(response.bodyBytes.buffer.asByteData());
+        }
+      } catch (e2) {
+        print('⚠ Failed to load bold font from CDN: $e2');
+      }
+    }
+    return null;
+  }
+  
+  Future<Uint8List> _generatePDFPreview(Map<String, dynamic> columns, Map<String, dynamic> options) async {
+    final pdf = pw.Document();
+    
+    // Load Unicode fonts
+    final unicodeFont = await _loadUnicodeFont();
+    final unicodeBoldFont = await _loadUnicodeBoldFont();
+    
+    if (unicodeFont == null) {
+      throw Exception('Nepodarilo sa načítať Unicode font pre tlač');
+    }
+    
+    // Create table data
+    final List<List<String>> tableData = [];
+    
+    // Add header row
+    final List<String> header = [];
+    if (columns['id'] == true) header.add('ID');
+    if (columns['name'] == true) header.add('Názov');
+    if (columns['type'] == true) header.add('Typ');
+    if (columns['category'] == true) header.add('Kategória');
+    if (columns['plu'] == true) header.add('PLU');
+    if (columns['ean'] == true) header.add('EAN');
+    if (columns['purchasePrice'] == true) header.add(_showPurchasePriceWithVat ? 'Nákupná cena s DPH' : 'Nákupná cena bez DPH');
+    if (columns['lastPurchasePrice'] == true) header.add(_showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH');
+    if (columns['salePrice'] == true) header.add(_showSalePriceWithVat ? 'Predajná cena s DPH' : 'Predajná cena bez DPH');
+    if (columns['vat'] == true) header.add('DPH');
+    if (columns['margin'] == true) header.add('Marža');
+    if (columns['stock'] == true) header.add('Stav');
+    tableData.add(header);
+    
+    // Add data rows (limit to first 10 for preview)
+    final previewMaterials = _filteredMaterials.take(10).toList();
+    for (final material in previewMaterials) {
+      final row = <String>[];
+      if (columns['id'] == true) row.add(material.warehouseNumber ?? material.id?.toString() ?? '-');
+      if (columns['name'] == true) row.add(material.name);
+      if (columns['type'] == true) row.add(_getMaterialTypeName(material.type));
+      if (columns['category'] == true) row.add(_getCategoryName(material.category));
+      if (columns['plu'] == true) row.add(material.pluCode ?? '-');
+      if (columns['ean'] == true) row.add(material.eanCode ?? '-');
+      if (columns['purchasePrice'] == true) {
+        final price = _getPurchasePrice(material);
+        row.add(price != null ? '${NumberFormat.currency(symbol: '€', decimalDigits: 2).format(price)}' : '-');
+      }
+      if (columns['lastPurchasePrice'] == true) {
+        final lastMovement = material.id != null ? _lastPurchaseMovements[material.id!] : null;
+        if (lastMovement != null) {
+          final price = _showPurchasePriceWithVat ? lastMovement.purchasePriceWithVat : lastMovement.purchasePriceWithoutVat;
+          row.add(price != null ? '${NumberFormat.currency(symbol: '€', decimalDigits: 2).format(price)}' : '-');
+        } else {
+          row.add('-');
+        }
+      }
+      if (columns['salePrice'] == true) {
+        final price = _getSalePrice(material);
+        row.add(price != null ? '${NumberFormat.currency(symbol: '€', decimalDigits: 2).format(price)}' : '-');
+      }
+      if (columns['vat'] == true) {
+        row.add(material.vatRate != null ? '${material.vatRate!.toStringAsFixed(1)}%' : '-');
+      }
+      if (columns['margin'] == true) {
+        final margin = _getMarginPercentage(material);
+        row.add(margin != null ? '${margin.toStringAsFixed(1)}%' : '-');
+      }
+      if (columns['stock'] == true) {
+        row.add('${material.currentStock.toStringAsFixed(1)} ${material.unit}');
+      }
+      tableData.add(row);
+    }
+    
+    // Add page to PDF
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              if (options['header'] == true) ...[
+                pw.Text(
+                  'PREHĽAD S KLADOVÝCH ZÁSOB (NÁHĽAD)',
+                  style: pw.TextStyle(
+                    font: unicodeBoldFont ?? unicodeFont,
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.blue800,
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  'Dátum: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}',
+                  style: pw.TextStyle(
+                    font: unicodeFont,
+                    fontSize: 8,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+                pw.Text(
+                  'Zobrazuje prvých ${previewMaterials.length} z ${_filteredMaterials.length} položiek',
+                  style: pw.TextStyle(
+                    font: unicodeFont,
+                    fontSize: 8,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+                pw.SizedBox(height: 12),
+              ],
+              
+              // Table
+              pw.Table.fromTextArray(
+                context: context,
+                data: tableData,
+                border: pw.TableBorder.all(color: PdfColors.grey300),
+                headerStyle: pw.TextStyle(
+                  font: unicodeBoldFont ?? unicodeFont,
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 4,
+                ),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                cellStyle: pw.TextStyle(
+                  font: unicodeFont,
+                  fontSize: 5,
+                ),
+                cellAlignments: {
+                  for (int i = 0; i < header.length; i++)
+                    i: pw.Alignment.centerLeft,
+                  // Align numeric columns to right
+                  if (columns['purchasePrice'] == true) header.indexOf(_showPurchasePriceWithVat ? 'Nákupná cena s DPH' : 'Nákupná cena bez DPH'): pw.Alignment.centerRight,
+                  if (columns['lastPurchasePrice'] == true) header.indexOf(_showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH'): pw.Alignment.centerRight,
+                  if (columns['salePrice'] == true) header.indexOf(_showSalePriceWithVat ? 'Predajná cena s DPH' : 'Predajná cena bez DPH'): pw.Alignment.centerRight,
+                  if (columns['vat'] == true) header.indexOf('DPH'): pw.Alignment.centerRight,
+                  if (columns['margin'] == true) header.indexOf('Marža'): pw.Alignment.centerRight,
+                  if (columns['stock'] == true) header.indexOf('Stav'): pw.Alignment.centerRight,
+                },
+                columnWidths: {
+                  for (int i = 0; i < header.length; i++)
+                    i: const pw.FlexColumnWidth(),
+                },
+              ),
+              
+              if (options['footer'] == true) ...[
+                pw.SizedBox(height: 12),
+                pw.Divider(color: PdfColors.grey300),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  'Toto je len náhľad. Plný dokument bude obsahovať všetky ${_filteredMaterials.length} položiek.',
+                  style: pw.TextStyle(
+                    font: unicodeFont,
+                    fontSize: 7,
+                    color: PdfColors.blue600,
+                  ),
+                ),
+                pw.Text(
+                  'Generované PWMS systémom',
+                  style: pw.TextStyle(
+                    font: unicodeFont,
+                    fontSize: 7,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+    
+    return pdf.save();
+  }
+  
+  Future<void> _generatePDF(Map<String, dynamic> columns, Map<String, dynamic> options) async {
+    final pdf = pw.Document();
+    
+    // Load Unicode fonts
+    final unicodeFont = await _loadUnicodeFont();
+    final unicodeBoldFont = await _loadUnicodeBoldFont();
+    
+    if (unicodeFont == null) {
+      throw Exception('Nepodarilo sa načítať Unicode font pre tlač');
+    }
+    
+    // Create table data
+    final List<List<String>> tableData = [];
+    
+    // Add header row
+    final List<String> header = [];
+    if (columns['id'] == true) header.add('ID');
+    if (columns['name'] == true) header.add('Názov');
+    if (columns['type'] == true) header.add('Typ');
+    if (columns['category'] == true) header.add('Kategória');
+    if (columns['plu'] == true) header.add('PLU');
+    if (columns['ean'] == true) header.add('EAN');
+    if (columns['purchasePrice'] == true) header.add(_showPurchasePriceWithVat ? 'Nákupná cena s DPH' : 'Nákupná cena bez DPH');
+    if (columns['lastPurchasePrice'] == true) header.add(_showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH');
+    if (columns['salePrice'] == true) header.add(_showSalePriceWithVat ? 'Predajná cena s DPH' : 'Predajná cena bez DPH');
+    if (columns['vat'] == true) header.add('DPH');
+    if (columns['margin'] == true) header.add('Marža');
+    if (columns['stock'] == true) header.add('Stav');
+    tableData.add(header);
+    
+    // Add data rows
+    for (final material in _filteredMaterials) {
+      final row = <String>[];
+      if (columns['id'] == true) row.add(material.warehouseNumber ?? material.id?.toString() ?? '-');
+      if (columns['name'] == true) row.add(material.name);
+      if (columns['type'] == true) row.add(_getMaterialTypeName(material.type));
+      if (columns['category'] == true) row.add(_getCategoryName(material.category));
+      if (columns['plu'] == true) row.add(material.pluCode ?? '-');
+      if (columns['ean'] == true) row.add(material.eanCode ?? '-');
+      if (columns['purchasePrice'] == true) {
+        final price = _getPurchasePrice(material);
+        row.add(price != null ? '${NumberFormat.currency(symbol: '€', decimalDigits: 2).format(price)}' : '-');
+      }
+      if (columns['lastPurchasePrice'] == true) {
+        final lastMovement = material.id != null ? _lastPurchaseMovements[material.id!] : null;
+        if (lastMovement != null) {
+          final price = _showPurchasePriceWithVat ? lastMovement.purchasePriceWithVat : lastMovement.purchasePriceWithoutVat;
+          row.add(price != null ? '${NumberFormat.currency(symbol: '€', decimalDigits: 2).format(price)}' : '-');
+        } else {
+          row.add('-');
+        }
+      }
+      if (columns['salePrice'] == true) {
+        final price = _getSalePrice(material);
+        row.add(price != null ? '${NumberFormat.currency(symbol: '€', decimalDigits: 2).format(price)}' : '-');
+      }
+      if (columns['vat'] == true) {
+        row.add(material.vatRate != null ? '${material.vatRate!.toStringAsFixed(1)}%' : '-');
+      }
+      if (columns['margin'] == true) {
+        final margin = _getMarginPercentage(material);
+        row.add(margin != null ? '${margin.toStringAsFixed(1)}%' : '-');
+      }
+      if (columns['stock'] == true) {
+        row.add('${material.currentStock.toStringAsFixed(1)} ${material.unit}');
+      }
+      tableData.add(row);
+    }
+    
+    // Add page to PDF
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              if (options['header'] == true) ...[
+                pw.Text(
+                  'Prehľad skladových zásob',
+                  style: pw.TextStyle(
+                    font: unicodeBoldFont ?? unicodeFont,
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  'Dátum: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}',
+                  style: pw.TextStyle(
+                    font: unicodeFont,
+                    fontSize: 8,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+                pw.Text(
+                  'Počet položiek: ${_filteredMaterials.length}',
+                  style: pw.TextStyle(
+                    font: unicodeFont,
+                    fontSize: 8,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+                pw.SizedBox(height: 12),
+              ],
+              
+              // Table
+              pw.Table.fromTextArray(
+                context: context,
+                data: tableData,
+                border: pw.TableBorder.all(color: PdfColors.grey300),
+                headerStyle: pw.TextStyle(
+                  font: unicodeBoldFont ?? unicodeFont,
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 4,
+                ),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                cellStyle: pw.TextStyle(
+                  font: unicodeFont,
+                  fontSize: 5,
+                ),
+                cellAlignments: {
+                  for (int i = 0; i < header.length; i++)
+                    i: pw.Alignment.centerLeft,
+                  // Align numeric columns to right
+                  if (columns['purchasePrice'] == true) header.indexOf(_showPurchasePriceWithVat ? 'Nákupná cena s DPH' : 'Nákupná cena bez DPH'): pw.Alignment.centerRight,
+                  if (columns['lastPurchasePrice'] == true) header.indexOf(_showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH'): pw.Alignment.centerRight,
+                  if (columns['salePrice'] == true) header.indexOf(_showSalePriceWithVat ? 'Predajná cena s DPH' : 'Predajná cena bez DPH'): pw.Alignment.centerRight,
+                  if (columns['vat'] == true) header.indexOf('DPH'): pw.Alignment.centerRight,
+                  if (columns['margin'] == true) header.indexOf('Marža'): pw.Alignment.centerRight,
+                  if (columns['stock'] == true) header.indexOf('Stav'): pw.Alignment.centerRight,
+                },
+                columnWidths: {
+                  for (int i = 0; i < header.length; i++)
+                    i: const pw.FlexColumnWidth(),
+                },
+              ),
+              
+              if (options['footer'] == true) ...[
+                pw.SizedBox(height: 12),
+                pw.Divider(color: PdfColors.grey300),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  'Generované PWMS systémom',
+                  style: pw.TextStyle(
+                    font: unicodeFont,
+                    fontSize: 7,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+    
+    // Save and print PDF
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Skladove zasoby_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.pdf',
     );
   }
 
@@ -3293,6 +3793,57 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                     Expanded(
                       flex: 2,
                       child: _buildHeaderCellWithContextMenu('Marža', textAlign: TextAlign.right, sortColumn: 'margin'),
+                    ),
+                  if (_showColumnLastPurchasePrice)
+                    Expanded(
+                      flex: 2,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _showPurchasePriceWithVat = !_showPurchasePriceWithVat;
+                          });
+                        },
+                        onSecondaryTap: () => _showColumnContextMenu(context, _showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH'),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Tooltip(
+                            message: _showPurchasePriceWithVat ? 'Posl. nákup s DPH (klik = prepnúť)' : 'Posl. nákup bez DPH (klik = prepnúť)',
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: _showPurchasePriceWithVat ? Colors.blue.shade50 : Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      _showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH',
+                                      textAlign: TextAlign.right,
+                                      overflow: TextOverflow.visible,
+                                      maxLines: 2,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        color: _showPurchasePriceWithVat ? Colors.blue.shade700 : Colors.red.shade700,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    Icons.swap_horiz,
+                                    size: 12,
+                                    color: _showPurchasePriceWithVat ? Colors.blue.shade700 : Colors.red.shade700,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   if (_showColumnStock)
                     Expanded(
@@ -3655,6 +4206,11 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                             ],
                           ),
                         ),
+                      if (_showColumnLastPurchasePrice)
+                        Expanded(
+                          flex: 2,
+                          child: _buildLastPurchasePriceCell(material),
+                        ),
                       if (_showColumnStock)
                             Expanded(
                               flex: 2,
@@ -3825,6 +4381,57 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                     Expanded(flex: 2, child: Text('DPH', textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey[800]))),
                   if (_showColumnMargin)
                     Expanded(flex: 2, child: Text('Marža', textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey[800]))),
+                  if (_showColumnLastPurchasePrice)
+                    Expanded(
+                      flex: 2,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _showPurchasePriceWithVat = !_showPurchasePriceWithVat;
+                          });
+                        },
+                        onSecondaryTap: () => _showColumnContextMenu(context, _showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH'),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Tooltip(
+                            message: _showPurchasePriceWithVat ? 'Posl. nákup s DPH (klik = prepnúť)' : 'Posl. nákup bez DPH (klik = prepnúť)',
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: _showPurchasePriceWithVat ? Colors.blue.shade50 : Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      _showPurchasePriceWithVat ? 'Posl. nákup s DPH' : 'Posl. nákup bez DPH',
+                                      textAlign: TextAlign.right,
+                                      overflow: TextOverflow.visible,
+                                      maxLines: 2,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10,
+                                        color: _showPurchasePriceWithVat ? Colors.blue.shade700 : Colors.red.shade700,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    Icons.swap_horiz,
+                                    size: 10,
+                                    color: _showPurchasePriceWithVat ? Colors.blue.shade700 : Colors.red.shade700,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   Expanded(flex: 2, child: Text('Stav', textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey[800]))),
                 ],
               ),
@@ -4077,6 +4684,11 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                             ],
                           ),
                         ),
+                      if (_showColumnLastPurchasePrice)
+                        Expanded(
+                          flex: 2,
+                          child: _buildLastPurchasePriceCell(material),
+                        ),
                       Expanded(
                         flex: 2,
                         child: Row(
@@ -4199,6 +4811,10 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                       Expanded(
                         child: _buildInfoItem('Stav', '${material.currentStock.toStringAsFixed(1)} ${material.unit}', isLowStock ? Colors.red.shade700 : Colors.green.shade700),
                       ),
+                      if (_showColumnLastPurchasePrice)
+                        Expanded(
+                          child: _buildLastPurchasePriceCompactItem(material),
+                        ),
                       if (material.averagePurchasePriceWithVat != null)
                         Expanded(
                           child: _buildInfoItem('Nákup', '${_formatPurchasePrice(material.averagePurchasePriceWithVat)} €', Colors.blue.shade700),
@@ -4249,6 +4865,29 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           ),
         ),
       ],
+    );
+  }
+  
+  Widget _buildLastPurchasePriceCompactItem(Material material) {
+    final lastMovement = material.id != null ? _lastPurchaseMovements[material.id!] : null;
+    
+    if (lastMovement == null) {
+      return _buildInfoItem('Posl. nákup s DPH', '-', Colors.grey);
+    }
+    
+    // Use price with VAT if available, otherwise without VAT
+    final price = _showPurchasePriceWithVat 
+        ? lastMovement.purchasePriceWithVat 
+        : lastMovement.purchasePriceWithoutVat;
+    
+    if (price == null) {
+      return _buildInfoItem('Posl. nákup s DPH', '-', Colors.grey);
+    }
+    
+    return _buildInfoItem(
+      'Posl. nákup s DPH', 
+      '${_formatPurchasePrice(price)} €', 
+      _showPurchasePriceWithVat ? Colors.blue.shade700 : Colors.red.shade700
     );
   }
 
@@ -4624,6 +5263,67 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
       },
     );
   }
+  
+  Widget _buildLastPurchasePriceCell(Material material) {
+    final lastMovement = material.id != null ? _lastPurchaseMovements[material.id!] : null;
+    
+    if (lastMovement == null) {
+      return const Text(
+        '-',
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontSize: 13,
+          color: Colors.grey,
+          fontWeight: FontWeight.w500,
+        ),
+      );
+    }
+    
+    // Use price with VAT if available, otherwise without VAT
+    final price = _showPurchasePriceWithVat 
+        ? lastMovement.purchasePriceWithVat 
+        : lastMovement.purchasePriceWithoutVat;
+    
+    if (price == null) {
+      return const Text(
+        '-',
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontSize: 13,
+          color: Colors.grey,
+          fontWeight: FontWeight.w500,
+        ),
+      );
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${_formatPurchasePrice(price)} €',
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            fontSize: 13,
+            color: _showPurchasePriceWithVat ? Colors.blue.shade700 : Colors.red.shade700,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (lastMovement.movementDate.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              _formatDate(lastMovement.movementDate),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _StatisticsChartsDialog extends StatelessWidget {
@@ -4831,6 +5531,454 @@ class _StatisticsChartsDialog extends StatelessWidget {
     return const Center(
       child: Text('Trendy zásob vyžadujú historické dáta'),
     );
+  }
+}
+
+class _PrintOptionsDialog extends StatefulWidget {
+  final List<Material> materials;
+  
+  const _PrintOptionsDialog({required this.materials});
+  
+  @override
+  State<_PrintOptionsDialog> createState() => _PrintOptionsDialogState();
+}
+
+class _PrintOptionsDialogState extends State<_PrintOptionsDialog> {
+  // Column selection options
+  bool _printId = true;
+  bool _printName = true;
+  bool _printType = true;
+  bool _printCategory = true;
+  bool _printPLU = false;
+  bool _printEAN = false;
+  bool _printPurchasePrice = true;
+  bool _printLastPurchasePrice = true;
+  bool _printSalePrice = true;
+  bool _printVat = true;
+  bool _printMargin = true;
+  bool _printStock = true;
+  
+  // Print options
+  String _printFormat = 'pdf'; // 'pdf' or 'paper'
+  bool _printHeader = true;
+  bool _printFooter = true;
+  bool _printDate = true;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.6,
+        height: MediaQuery.of(context).size.height * 0.8,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.print, size: 28, color: Colors.blue.shade700),
+                const SizedBox(width: 12),
+                Text(
+                  'Tlač zásob',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            
+            // Print format selection
+            Text(
+              'Formát tlače',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: const Text('PDF'),
+                    value: 'pdf',
+                    groupValue: _printFormat,
+                    onChanged: (value) => setState(() => _printFormat = value!),
+                  ),
+                ),
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: const Text('Papier'),
+                    value: 'paper',
+                    groupValue: _printFormat,
+                    onChanged: (value) => setState(() => _printFormat = value!),
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Column selection
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Stĺpce na tlač',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Basic columns
+                    _buildSectionHeader('Základné informácie'),
+                    CheckboxListTile(
+                      title: const Text('ID'),
+                      value: _printId,
+                      onChanged: (value) => setState(() => _printId = value!),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Názov'),
+                      value: _printName,
+                      onChanged: (value) => setState(() => _printName = value!),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Typ'),
+                      value: _printType,
+                      onChanged: (value) => setState(() => _printType = value!),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Kategória'),
+                      value: _printCategory,
+                      onChanged: (value) => setState(() => _printCategory = value!),
+                    ),
+                    
+                    _buildSectionHeader('Kódy'),
+                    CheckboxListTile(
+                      title: const Text('PLU kód'),
+                      value: _printPLU,
+                      onChanged: (value) => setState(() => _printPLU = value!),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('EAN kód'),
+                      value: _printEAN,
+                      onChanged: (value) => setState(() => _printEAN = value!),
+                    ),
+                    
+                    _buildSectionHeader('Ceny'),
+                    CheckboxListTile(
+                      title: const Text('Nákupná cena'),
+                      value: _printPurchasePrice,
+                      onChanged: (value) => setState(() => _printPurchasePrice = value!),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Posledná nákupná cena'),
+                      value: _printLastPurchasePrice,
+                      onChanged: (value) => setState(() => _printLastPurchasePrice = value!),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Predajná cena'),
+                      value: _printSalePrice,
+                      onChanged: (value) => setState(() => _printSalePrice = value!),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('DPH'),
+                      value: _printVat,
+                      onChanged: (value) => setState(() => _printVat = value!),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Marža'),
+                      value: _printMargin,
+                      onChanged: (value) => setState(() => _printMargin = value!),
+                    ),
+                    
+                    _buildSectionHeader('Sklad'),
+                    CheckboxListTile(
+                      title: const Text('Stav zásob'),
+                      value: _printStock,
+                      onChanged: (value) => setState(() => _printStock = value!),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Print options
+            Text(
+              'Ďalšie možnosti',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              title: const Text('Záhlavie (názov a dátum)'),
+              value: _printHeader,
+              onChanged: (value) => setState(() => _printHeader = value!),
+            ),
+            CheckboxListTile(
+              title: const Text('Pätička (počet položiek a súhrn)'),
+              value: _printFooter,
+              onChanged: (value) => setState(() => _printFooter = value!),
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Zrušiť'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _handlePrint(),
+                    icon: const Icon(Icons.print),
+                    label: const Text('Tlačiť'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.blue.shade700,
+        ),
+      ),
+    );
+  }
+  
+  void _handlePrint() {
+    // Create print configuration
+    final printConfig = {
+      'format': _printFormat,
+      'columns': {
+        'id': _printId,
+        'name': _printName,
+        'type': _printType,
+        'category': _printCategory,
+        'plu': _printPLU,
+        'ean': _printEAN,
+        'purchasePrice': _printPurchasePrice,
+        'lastPurchasePrice': _printLastPurchasePrice,
+        'salePrice': _printSalePrice,
+        'vat': _printVat,
+        'margin': _printMargin,
+        'stock': _printStock,
+      },
+      'options': {
+        'header': _printHeader,
+        'footer': _printFooter,
+        'date': _printDate,
+      },
+    };
+    
+    Navigator.of(context).pop(printConfig);
+  }
+}
+
+class _PrintPreviewDialog extends StatefulWidget {
+  final Uint8List pdf;
+  final Map<String, dynamic> printConfig;
+  final int totalMaterials;
+  final Future<void> Function(Map<String, dynamic>, Map<String, dynamic>) onPrint;
+  
+  const _PrintPreviewDialog({
+    required this.pdf,
+    required this.printConfig,
+    required this.totalMaterials,
+    required this.onPrint,
+  });
+  
+  @override
+  State<_PrintPreviewDialog> createState() => _PrintPreviewDialogState();
+}
+
+class _PrintPreviewDialogState extends State<_PrintPreviewDialog> {
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.85,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Icon(Icons.preview, size: 28, color: Colors.blue.shade700),
+                const SizedBox(width: 12),
+                Text(
+                  'Náhľad tlače',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // Preview area
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.grey.shade50,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: PdfPreview(
+                    build: (format) => widget.pdf,
+                    allowSharing: false,
+                    allowPrinting: false,
+                    canChangeOrientation: false,
+                    canChangePageFormat: false,
+                    canDebug: false,
+                    maxPageWidth: 700,
+                    pdfPreviewPageDecoration: const BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    initialPageFormat: PdfPageFormat.a4,
+                  ),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Info text
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Toto je náhľad prvých 10 položiek. Plný dokument bude obsahovať všetkých ${widget.totalMaterials} položiek.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Späť k úpravám'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _executePrint(),
+                    icon: const Icon(Icons.print),
+                    label: const Text('Tlačiť všetko'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  void _executePrint() async {
+    Navigator.of(context).pop();
+    
+    try {
+      final columns = widget.printConfig['columns'] as Map<String, dynamic>;
+      final options = widget.printConfig['options'] as Map<String, dynamic>;
+      
+      await widget.onPrint(columns, options);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('PDF bolo vygenerované'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Chyba pri tlači: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }
 

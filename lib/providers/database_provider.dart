@@ -481,6 +481,21 @@ class DatabaseProvider with ChangeNotifier {
     return maps.map((map) => StockMovement.fromMap(map)).toList();
   }
 
+  /// Get the last purchase price for a material (from the most recent approved receipt)
+  Future<StockMovement?> getLastPurchaseMovement(int materialId) async {
+    final db = await _db.database;
+    final maps = await db.query(
+      'stock_movements',
+      where: 'material_id = ? AND movement_type = ? AND status = ? AND (purchase_price_without_vat IS NOT NULL OR purchase_price_with_vat IS NOT NULL)',
+      whereArgs: [materialId, 'receipt', 'approved'],
+      orderBy: 'movement_date DESC, created_at DESC',
+      limit: 1,
+    );
+    
+    if (maps.isEmpty) return null;
+    return StockMovement.fromMap(maps.first);
+  }
+
   Future<int> insertStockMovement(StockMovement movement) async {
     final db = await _db.database;
     

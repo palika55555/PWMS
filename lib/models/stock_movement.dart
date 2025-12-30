@@ -17,6 +17,7 @@ class StockMovement {
   final double? purchasePriceWithoutVat; // Nákupná cena bez DPH
   final double? purchasePriceWithVat; // Nákupná cena s DPH
   final double? vatRate; // Sadzba DPH
+  final String? pricingMode; // 'sale', 'purchase', 'vat_exempt'
   final int? supplierId; // ID dodávateľa
   final int? warehouseId; // ID skladu
   final int? customerId; // ID zákazníka (pre výdajku)
@@ -50,6 +51,7 @@ class StockMovement {
     this.purchasePriceWithoutVat,
     this.purchasePriceWithVat,
     this.vatRate,
+    this.pricingMode,
     this.supplierId,
     this.warehouseId,
     this.customerId,
@@ -85,6 +87,7 @@ class StockMovement {
       'purchase_price_without_vat': purchasePriceWithoutVat,
       'purchase_price_with_vat': purchasePriceWithVat,
       'vat_rate': vatRate,
+      'pricing_mode': pricingMode,
       'supplier_id': supplierId,
       'warehouse_id': warehouseId,
       'customer_id': customerId,
@@ -121,6 +124,7 @@ class StockMovement {
       purchasePriceWithoutVat: (map['purchase_price_without_vat'] as num?)?.toDouble(),
       purchasePriceWithVat: (map['purchase_price_with_vat'] as num?)?.toDouble(),
       vatRate: (map['vat_rate'] as num?)?.toDouble(),
+      pricingMode: map['pricing_mode'] as String?,
       supplierId: map['supplier_id'] as int?,
       warehouseId: map['warehouse_id'] as int?,
       customerId: map['customer_id'] as int?,
@@ -156,6 +160,7 @@ class StockMovement {
     double? purchasePriceWithoutVat,
     double? purchasePriceWithVat,
     double? vatRate,
+    String? pricingMode,
     int? supplierId,
     int? warehouseId,
     int? customerId,
@@ -189,6 +194,7 @@ class StockMovement {
       purchasePriceWithoutVat: purchasePriceWithoutVat ?? this.purchasePriceWithoutVat,
       purchasePriceWithVat: purchasePriceWithVat ?? this.purchasePriceWithVat,
       vatRate: vatRate ?? this.vatRate,
+      pricingMode: pricingMode ?? this.pricingMode,
       supplierId: supplierId ?? this.supplierId,
       warehouseId: warehouseId ?? this.warehouseId,
       customerId: customerId ?? this.customerId,
