@@ -23,3 +23,5 @@ class QrScannerWebImpl extends StatelessWidget {
 
 
 
+
+

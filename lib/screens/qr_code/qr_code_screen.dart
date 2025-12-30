@@ -61,7 +61,23 @@ class QrScannerMobile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const QrScannerMobileImpl();
+    return QrScannerMobileImpl(
+      onScan: (code) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Naskenovaný QR kód'),
+            content: Text(code),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 

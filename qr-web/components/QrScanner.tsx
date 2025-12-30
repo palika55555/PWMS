@@ -21,19 +21,35 @@ export function QrScanner({ onDecoded }: QrScannerProps) {
 
   const lastRef = useRef<{ raw: string; ts: number }>({ raw: "", ts: 0 });
 
+  async function loadDevices() {
+    const list = await BrowserMultiFormatReader.listVideoInputDevices();
+    const opts = list.map((d) => ({ deviceId: d.deviceId, label: d.label || "Kamera" }));
+    setDevices(opts);
+
+    const preferred =
+      opts.find((d) => /back|rear|environment/i.test(d.label))?.deviceId ?? (opts[opts.length - 1]?.deviceId ?? "");
+    setDeviceId((cur) => cur || preferred);
+
+    return { opts, preferred };
+  }
+
+  async function requestCameraPermission() {
+    const mediaDevices = (navigator as any)?.mediaDevices as MediaDevices | undefined;
+    if (!mediaDevices?.getUserMedia) return;
+
+    const stream = await mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+    for (const t of stream.getTracks()) t.stop();
+  }
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const list = await BrowserMultiFormatReader.listVideoInputDevices();
+        await loadDevices();
         if (cancelled) return;
-        const opts = list.map((d) => ({ deviceId: d.deviceId, label: d.label || "Kamera" }));
-        setDevices(opts);
-
-        // prefer "back" / "rear" if present
-        const preferred =
-          opts.find((d) => /back|rear|environment/i.test(d.label))?.deviceId ?? (opts[opts.length - 1]?.deviceId ?? "");
-        setDeviceId(preferred);
       } catch (e) {
         if (!cancelled) {
           setError("Nepodarilo sa načítať kamery. Skontroluj povolenia pre kameru v prehliadači.");
@@ -57,16 +73,30 @@ export function QrScanner({ onDecoded }: QrScannerProps) {
       setError("Video element nie je pripravený.");
       return;
     }
-    if (!deviceId) {
-      setError("Nie je vybraná kamera.");
-      return;
-    }
 
     // Ensure stopped first
     await stop();
 
     try {
-      const controls = await reader.decodeFromVideoDevice(deviceId, videoRef.current, (result, err) => {
+      let id = deviceId;
+      if (!id) {
+        try {
+          await requestCameraPermission();
+        } catch {
+          // ignore and fall back to best-effort start
+        }
+
+        try {
+          const { preferred } = await loadDevices();
+          id = preferred;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (id && id !== deviceId) setDeviceId(id);
+
+      const controls = await reader.decodeFromVideoDevice((id || undefined) as any, videoRef.current, (result, err) => {
         if (result) {
           const raw = result.getText().trim();
           if (!raw) return;
@@ -147,6 +177,8 @@ export function QrScanner({ onDecoded }: QrScannerProps) {
     </div>
   );
 }
+
+
 
 
 

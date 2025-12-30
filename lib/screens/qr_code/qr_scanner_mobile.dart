@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class QrScannerMobileImpl extends StatefulWidget {
-  const QrScannerMobileImpl({super.key});
+  final Function(String) onScan;
+  
+  const QrScannerMobileImpl({super.key, required this.onScan});
 
   @override
   State<QrScannerMobileImpl> createState() => _QrScannerMobileImplState();
@@ -61,24 +63,7 @@ class _QrScannerMobileImplState extends State<QrScannerMobileImpl> {
   }
 
   void _handleScannedCode(String code) {
-    controller.stop();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Naskenovaný QR kód'),
-        content: Text(code),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              controller.start();
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+    widget.onScan(code);
   }
 }
 

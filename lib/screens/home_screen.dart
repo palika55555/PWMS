@@ -8,6 +8,7 @@ import 'transport/transport_screen.dart';
 import 'production/production_screen.dart';
 import 'warehouse/warehouse_screen.dart';
 import 'warehouse/material_search_screen.dart';
+import 'warehouse/product_pallets_screen.dart';
 import 'qr_code/qr_code_screen.dart';
 import 'settings/settings_screen.dart';
 
@@ -201,6 +202,21 @@ class _HomeScreenState extends State<HomeScreen> {
                             context,
                             MaterialPageRoute(
                               builder: (context) => const WarehouseScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _buildMenuCard(
+                        context,
+                        title: 'Palety na sklade',
+                        icon: Icons.inventory_2,
+                        color: Colors.deepOrange,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ProductPalletsScreen(),
                             ),
                           );
                         },
