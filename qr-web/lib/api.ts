@@ -45,7 +45,8 @@ export type ApiSummary = {
 
 function baseUrl() {
   const u = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  return u ? u.replace(/\/+$/, "") : "";
+  // Fallback na Railway URL ak env premenná nie je nastavená
+  return u ? u.replace(/\/+$/, "") : "https://railway-pwms-production.up.railway.app";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
